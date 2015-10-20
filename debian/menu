@@ -1,2 +1,0 @@
-?package(gnome-twitch):needs="X11|text|vc|wm" section="Applications/Video"\
-  title="gnome-twitch" command="/usr/bin/gnome-twitch"

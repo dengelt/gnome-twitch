@@ -1,5 +1,5 @@
 gnome-twitch (0.1.0-1) UNRELEASED; urgency=low
 
-  * Initial release (Closes: #nnnn)  <nnnn is the bug number of your ITP>
+  * Initial release (Closes: #802226)
 
- -- Tim Dengel <tim.dengel.debian@gmail.com>  Sat, 17 Oct 2015 22:02:41 +0200
+ -- Tim Dengel <tim.dengel.debian@gmail.com>  Mon, 19 Oct 2015 22:02:41 +0200

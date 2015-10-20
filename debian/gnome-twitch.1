@@ -1,7 +1,7 @@
 .\"                                      Hey, EMACS: -*- nroff -*-
 .\" (C) Copyright 2015 Tim Dengel <tim.dengel.debian@gmail.com>,
 .\"
-.TH GNOME-TWITCH VIDEO "October 17, 2015"
+.TH GNOME-TWITCH 1 "October 19, 2015"
 .\" Please adjust this date whenever revising the manpage.
 .\"
 .\" Some roff macros, for reference:
@@ -18,29 +18,33 @@
 gnome-twitch \- GNOME Twitch app for watching Twitch.tv streams without a browser or flash.
 .SH SYNOPSIS
 .B gnome-twitch
-.RI [ options ] " files" ...
-.br
-.B bar
-.RI [ options ] " files" ...
+.RI [ options ] 
 .SH DESCRIPTION
-This manual page documents briefly the
-.B gnome-twitch
-and
-.B bar
-commands.
+gnome-twitch provides a GTK3 interface for viewing streams on Twitch.
+.br
+At the moment you can
+.br
+* browse,
+.br
+* search,
+.br
+* view streams and
+.br
+* change the video quality.
+.br
+More features like favorites, chat and recording streams are planned.
 .PP
-.\" TeX users may be more comfortable with the \fB<whatever>\fP and
-.\" \fI<whatever>\fP escape sequences to invode bold face and italics,
-.\" respectively.
-\fBgnome-twitch\fP is a program that...
 .SH OPTIONS
-These programs follow the usual GNU command line syntax, with long
+This program follows the usual GNU command line syntax, with long
 options starting with two dashes (`-').
 A summary of options is included below.
-For a complete description, see the Info files.
 .TP
 .B \-h, \-\-help
 Show summary of options.
 .TP
-.B \-v, \-\-version
-Show version of program.
+.B \-l, \-\-log\-level=\fILevel\fP
+Set logging level. 
+.br 
+Possible values for 
+.I Level
+are: Error, Critical, Warning, Message, Info, Debug, All.
