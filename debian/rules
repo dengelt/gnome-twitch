@@ -1,5 +1,6 @@
 #!/usr/bin/make -f
 export DH_VERBOSE = 1
+export MAKE = ninja
 
 %:
 	dh $@ 
@@ -8,11 +9,10 @@ override_dh_auto_configure:
 	mkdir build && meson --buildtype release --prefix /usr . build
 
 override_dh_auto_build:
-	ninja -C build all
+	$(MAKE) -C build all
 
 override_dh_auto_clean:
 	rm -rf build
 
 override_dh_auto_install:
-	dh_installdirs
-	DESTDIR=$(CURDIR)/debian/gnome-twitch ninja -C build install
+	DESTDIR=$(CURDIR)/debian/tmp $(MAKE) -C build install

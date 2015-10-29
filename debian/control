@@ -9,7 +9,7 @@ Homepage: https://github.com/Ippytraxx/gnome-twitch
 Package: gnome-twitch
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
-Description: GNOME Twitch app for watching Twitch.tv streams without a browser or flash.
+Description: GNOME Twitch app for watching Twitch.tv streams without a browser or flash
  gnome-twitch provides a GTK3 interface for viewing streams on Twitch.
  At the moment you can 
   * browse, 
