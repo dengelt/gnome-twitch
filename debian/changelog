@@ -1,0 +1,5 @@
+gnome-twitch (0.1.0-1) unstable; urgency=low
+
+  * Initial release (Closes: #802226)
+
+ -- Tim Dengel <tim.dengel.debian@gmail.com>  Fri, 23 Oct 2015 22:02:41 +0200
