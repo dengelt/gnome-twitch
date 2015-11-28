@@ -1,0 +1,21 @@
+From: Tim Dengel <t.dengel@ostfalia.de>
+Date: Sat, 28 Nov 2015 12:35:39 +0100
+Subject: Fixed spelling error: unkown -> unknown
+
+---
+ src/main.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/main.c b/src/main.c
+index 469359f..f4e5d69 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -58,7 +58,7 @@ gt_log(const gchar* domain,
+             level = "All";
+             break;
+         default:
+-            level = "Unkown";
++            level = "Unknown";
+             break;
+     }
+ 
