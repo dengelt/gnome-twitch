@@ -14,7 +14,6 @@ the hassle of flash or the web.
 * gst-plugins-base
 * gst-plugins-good
 * gst-plugins-bad
-* gst-plugins-ugly
 * clutter-gst
 * clutter-gtk
 
@@ -26,15 +25,13 @@ cd build
 mesonconf -Dprefix=/usr
 ninja install
 ```
-#### Post install
-```
-glib-compile-schemas /usr/share/glib-2.0/schemas
-update-desktop-database -q
-gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor
-```
+
 ### Distro packages
-* [Arch linux](https://aur4.archlinux.org/packages/gnome-twitch-git/)
-* [Ubuntu](http://www.getdeb.net/app/GNOME%20Twitch)
+* [Arch linux](https://aur4.archlinux.org/packages/gnome-twitch/)
+* [Arch linux (git)](https://aur4.archlinux.org/packages/gnome-twitch-git/)
+* [Fedora](https://copr.fedoraproject.org/coprs/ippytraxx/gnome-twitch/) (You will need to install gstreamer1-libav from RPMFusion)
+* [Ubuntu (PPA)](https://launchpad.net/~ippytraxx/+archive/ubuntu/gnome-twitch/) (You will need to install the ubuntu-restricted-extras for the h264 decoder)
+* [Ubuntu (courtesy of GetDeb.net)](http://www.getdeb.net/app/GNOME%20Twitch) (Same requirements as the PPA)
 
 ## Screenshots
 ![](/data/screenshots/scrot_streams.png?raw=true)
