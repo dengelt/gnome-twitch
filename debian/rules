@@ -6,7 +6,7 @@ export MAKE = ninja
 	dh $@ 
 
 override_dh_auto_configure:
-	mkdir build && meson --buildtype release --prefix /usr -Ddo-post-install=false . build
+	mkdir build && meson --buildtype debug --prefix /usr -Ddo-post-install=false . build
 
 override_dh_auto_build:
 	$(MAKE) -C build all
@@ -16,3 +16,6 @@ override_dh_auto_clean:
 
 override_dh_auto_install:
 	DESTDIR=$(CURDIR)/debian/tmp $(MAKE) -C build install
+
+override_dh_strip:
+	dh_strip --dbg-package=gnome-twitch-dbg
