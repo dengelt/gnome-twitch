@@ -17,3 +17,19 @@ Description: GNOME Twitch app for watching Twitch.tv streams without a browser o
   * view streams and 
   * change the video quality.
  More features like favorites, chat and recording streams are planned.
+
+Package: gnome-twitch-dbg
+Architecture: any
+Section: debug
+Priority: extra
+Depends: gnome-twitch (= ${binary:Version}), ${misc:Depends}
+Description: debugging symbols for gnome-twitch
+ gnome-twitch provides a GTK3 interface for viewing streams on Twitch.
+ At the moment you can
+  * browse,
+  * search,
+  * view streams and
+  * change the video quality.
+ More features like favorites, chat and recording streams are planned.
+ .
+ This package contains the debugging symbols for gnome-twitch.
