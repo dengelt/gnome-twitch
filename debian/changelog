@@ -1,3 +1,10 @@
+gnome-twitch (0.1.1~gitr259-1) experimental; urgency=low
+
+  * New snapshot from upstream development branch
+  * Added dbg package
+
+ -- Tim Dengel <tim.dengel.debian@gmail.com>  Sat, 12 Dec 2015 13:53:42 +0100
+
 gnome-twitch (0.1.1~gitr221-1) experimental; urgency=low
 
   * New snapshot from upstream development branch
