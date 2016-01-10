@@ -1,6 +1,35 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <interface>
   <template class="GtPlayerHeaderBar" parent="GtkHeaderBar">
+    <child type="title">
+      <object class="GtkButton" id="title_button">
+        <property name="visible">True</property>
+        <property name="relief">GTK_RELIEF_NONE</property>
+        <property name="action-name">win.show_channel_info</property>
+        <child>
+          <object class="GtkBox">
+            <property name="visible">True</property>
+            <property name="orientation">vertical</property>
+            <child>
+              <object class="GtkLabel" id="status_label">
+                <property name="visible">True</property>
+                <style>
+                  <class name="title"/>
+                </style>
+              </object>
+            </child>
+            <child>
+              <object class="GtkLabel" id="name_label">
+                <property name="visible">True</property>
+                <style>
+                  <class name="subtitle"/>
+                </style>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
     <child>
       <object class="GtkBox">
         <property name="visible">True</property>
@@ -9,7 +38,7 @@
         <child>
           <object class="GtkButton" id="back_button">
             <property name="visible" bind-source="GtPlayerHeaderBar" bind-property="fullscreen" bind-flags="G_BINDING_DEFAULT | G_BINDING_SYNC_CREATE | G_BINDING_INVERT_BOOLEAN"/>
-            <signal name="clicked" handler="player_back_button_cb" object="GtPlayerHeaderBar"/>
+            <property name="action-name">win.close_player</property>
             <style>
               <class name="image-button"/>
             </style>
@@ -92,7 +121,6 @@
           <object class="GtkMenuButton">
             <property name="visible">True</property>
             <property name="image">hamburger_image</property>
-            <!-- <property name="menu-model">player_hamburger_menu</property> -->
             <property name="popover">player_menu_popover</property>
           </object>
         </child>
@@ -130,7 +158,7 @@
         <property name="orientation">vertical</property>
         <property name="spacing">6</property>
         <child>
-          <object class="GtkModelButton">
+          <object class="GtkModelButton" id="show_chat_button">
             <property name="visible">True</property>
             <property name="action-name">player.show_chat</property>
             <property name="text" translatable="yes">Show chat</property>
@@ -141,6 +169,7 @@
             <property name="visible">True</property>
             <property name="action-name">player.dock_chat</property>
             <property name="text" translatable="yes">Dock chat</property>
+            <property name="visible" bind-source="show_chat_button" bind-property="active" bind-flags="default|sync-create"/>
           </object>
         </child>
         <child>
@@ -148,6 +177,7 @@
             <property name="visible">True</property>
             <property name="menu-name">edit_chat_menu</property>
             <property name="text" translatable="yes">Edit chat</property>
+            <property name="visible" bind-source="show_chat_button" bind-property="active" bind-flags="default|sync-create"/>
           </object>
         </child>
         <child>

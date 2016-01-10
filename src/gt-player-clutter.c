@@ -7,6 +7,7 @@
 #include "gt-enums.h"
 #include "utils.h"
 #include <glib/gprintf.h>
+#include <glib/gi18n.h>
 
 static const ClutterColor bg_colour = {0x00, 0x00, 0x00, 0x00};
 
@@ -24,8 +25,9 @@ typedef struct
     GtkWidget* fullscreen_bar;
     ClutterActor* fullscreen_bar_actor;
 
-    GtkWidget* buffer_bar;
     GtkWidget* buffer_box;
+    GtkWidget* buffer_label;
+    GtkWidget* buffer_spinner;
     ClutterActor* buffer_actor;
 
     GtkWidget* chat_view;
@@ -262,6 +264,7 @@ play(GtPlayer* player)
                                                      GTK_WINDOW(priv->win),
                                                      GTK_APPLICATION_INHIBIT_IDLE,
                                                      "Displaying a stream");
+
 }
 
 static void
@@ -281,6 +284,29 @@ stop(GtPlayer* player)
         gtk_application_uninhibit(GTK_APPLICATION(main_app), priv->inhibitor_cookie);
         priv->inhibitor_cookie = 0;
     }
+}
+
+static void
+channel_set_cb(GObject* source,
+               GParamSpec* pspec,
+               gpointer udata)
+{
+    GtPlayerClutter* self = GT_PLAYER_CLUTTER(udata);
+    GtPlayerClutterPrivate* priv = gt_player_clutter_get_instance_private(self);
+
+    if (priv->open_channel)
+    {
+        gtk_label_set_text(GTK_LABEL(priv->buffer_label), _("Loading stream"));
+        clutter_actor_show(priv->buffer_actor);
+
+        gt_twitch_chat_view_connect(GT_TWITCH_CHAT_VIEW(priv->chat_view),
+                                    gt_channel_get_name(priv->open_channel));
+    }
+    else
+    {
+        gt_twitch_chat_view_disconnect(GT_TWITCH_CHAT_VIEW(priv->chat_view));
+    }
+
 }
 
 static void
@@ -332,16 +358,15 @@ buffer_fill_cb(GObject* source,
     GtPlayerClutterPrivate* priv = gt_player_clutter_get_instance_private(self);
     gdouble percent;
 
-    g_object_get(priv->player, "buffer-fill", &percent, NULL);
+    percent = clutter_gst_playback_get_buffer_fill(priv->player);
 
     if (percent < 1.0)
     {
         gchar text[20];
-        g_sprintf(text, "Buffered %d%%\n", (gint) (percent * 100));
+        g_sprintf(text, _("Buffered %d%%"), (gint) (percent * 100));
 
+        gtk_label_set_text(GTK_LABEL(priv->buffer_label), text);
         clutter_actor_show(priv->buffer_actor);
-        gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(priv->buffer_bar), percent);
-        gtk_progress_bar_set_text(GTK_PROGRESS_BAR(priv->buffer_bar), text);
     }
     else
         clutter_actor_hide(priv->buffer_actor);
@@ -380,8 +405,9 @@ button_press_cb(GtkWidget* widget,
 }
 
 static void
-realise_cb(GtkWidget* widget,
-           gpointer udata)
+anchored_cb(GtkWidget* widget,
+            GtkWidget* prev_toplevel,
+            gpointer udata)
 {
     GtPlayerClutter* self = GT_PLAYER_CLUTTER(widget);
     GtPlayerClutterPrivate* priv = gt_player_clutter_get_instance_private(self);
@@ -390,6 +416,8 @@ realise_cb(GtkWidget* widget,
 
     g_signal_connect(priv->win, "notify::fullscreen", G_CALLBACK(fullscreen_cb), self);
     g_signal_connect(self, "notify::chat-docked", G_CALLBACK(chat_docked_cb), self);
+
+    g_signal_handlers_disconnect_by_func(self, anchored_cb, udata); //One-shot
 }
 
 static void
@@ -574,7 +602,8 @@ gt_player_clutter_init(GtPlayerClutter* self)
     priv->content = clutter_gst_aspectratio_new();
     priv->fullscreen_bar = GTK_WIDGET(gt_player_header_bar_new());
     priv->fullscreen_bar_actor = gtk_clutter_actor_new_with_contents(priv->fullscreen_bar);
-    priv->buffer_bar = gtk_progress_bar_new();
+    priv->buffer_spinner = gtk_spinner_new();
+    priv->buffer_label = gtk_label_new(NULL);
     priv->buffer_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
     priv->buffer_actor = gtk_clutter_actor_new_with_contents(priv->buffer_box);
     priv->chat_view = GTK_WIDGET(gt_twitch_chat_view_new());
@@ -589,15 +618,37 @@ gt_player_clutter_init(GtPlayerClutter* self)
 
     clutter_actor_set_layout_manager(priv->docked_layour_actor, layout);
 
-    gtk_container_add(GTK_CONTAINER(priv->buffer_box), priv->buffer_bar);
+    clutter_actor_hide(priv->fullscreen_bar_actor);
+
+    g_object_set(priv->buffer_spinner,
+                 "width-request", 32,
+                 "height-request", 32,
+                 "margin-top", 7,
+                 "margin-left", 7,
+                 "margin-right", 7,
+                 "active", TRUE,
+                 NULL);
+    g_object_set(priv->buffer_label,
+                 "margin-bottom", 7,
+                 "margin-left", 7,
+                 "margin-right", 7,
+                 NULL);
+
+    gtk_container_add(GTK_CONTAINER(priv->buffer_box), priv->buffer_spinner);
+    gtk_container_add(GTK_CONTAINER(priv->buffer_box), priv->buffer_label);
     gtk_widget_show_all(priv->buffer_box);
-    g_object_set(priv->buffer_bar, "show-text", TRUE, "margin", 7, NULL);
 
 //    gtk_clutter_embed_set_use_layout_size(GTK_CLUTTER_EMBED(priv->root_widget), TRUE);
 
+    /* g_object_set(priv->buffer_actor, */
+    /*              "height", 100.0, */
+    /*              "width", 150.0, */
+    /*              NULL); */
     g_object_set(priv->buffer_actor,
-                 "height", 50.0,
-                 "width", 150.0,
+                 "margin-top", 10.0,
+                 "margin-bottom", 10.0,
+                 "margin-left", 10.0,
+                 "margin-right", 10.0,
                  NULL);
 
     g_object_set(priv->video_actor,
@@ -608,7 +659,6 @@ gt_player_clutter_init(GtPlayerClutter* self)
     clutter_actor_hide(priv->buffer_actor);
 
     g_object_set(priv->fullscreen_bar, "player", self, NULL);
-    clutter_actor_hide(priv->fullscreen_bar_actor);
 
     g_object_set(priv->content, "player", priv->player, NULL);
     g_object_set(priv->video_actor, "content", priv->content, NULL);
@@ -625,16 +675,17 @@ gt_player_clutter_init(GtPlayerClutter* self)
     /* clutter_gst_playback_set_buffering_mode(priv->player, CLUTTER_GST_BUFFERING_MODE_STREAM); // In-memory buffering (let user choose?) */
     clutter_gst_playback_set_buffering_mode(priv->player, CLUTTER_GST_BUFFERING_MODE_DOWNLOAD); // On-disk buffering
 
-    g_signal_connect(priv->stage, "event", G_CALLBACK(clutter_stage_event_cb), self);
-    g_signal_connect(self, "realize", G_CALLBACK(realise_cb), self);
+    g_signal_connect(self, "hierarchy-changed", G_CALLBACK(anchored_cb), self);
     g_signal_connect(priv->player, "notify::buffer-fill", G_CALLBACK(buffer_fill_cb), self);
     g_signal_connect(priv->stage, "notify::size", G_CALLBACK(size_changed_cb), self);
+    g_signal_connect(priv->stage, "event", G_CALLBACK(clutter_stage_event_cb), self);
     g_signal_connect(priv->root_widget, "button-press-event", G_CALLBACK(button_press_cb), self);
     g_signal_connect(priv->stage, "notify::size", G_CALLBACK(scale_chat_view_cb), self);
     g_signal_connect(self, "notify::chat-width", G_CALLBACK(update_chat_view_size_cb), self);
     g_signal_connect(self, "notify::chat-height", G_CALLBACK(update_chat_view_size_cb), self);
     g_signal_connect(self, "notify::chat-x", G_CALLBACK(update_chat_view_pos_cb), self);
     g_signal_connect(self, "notify::chat-y", G_CALLBACK(update_chat_view_pos_cb), self);
+    g_signal_connect(self, "notify::open-channel", G_CALLBACK(channel_set_cb), self);
 
     g_object_bind_property(self, "volume",
                            priv->player, "audio-volume",

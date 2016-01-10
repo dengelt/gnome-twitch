@@ -5,7 +5,7 @@
 #include "gt-twitch.h"
 #include "gt-player.h"
 #include "gt-player-clutter.h"
-#include "gt-player-mpv.h"
+//#include "gt-player-mpv.h"
 #include "gt-player-header-bar.h"
 #include "gt-browse-header-bar.h"
 #include "gt-channels-view.h"
@@ -13,6 +13,7 @@
 #include "gt-favourites-view.h"
 #include "gt-settings-dlg.h"
 #include "gt-twitch-login-dlg.h"
+#include "gt-twitch-channel-info-dlg.h"
 #include "gt-twitch-chat-view.h"
 #include "gt-enums.h"
 #include "utils.h"
@@ -32,13 +33,18 @@ typedef struct
     GtkWidget* player_header_bar;
     GtkWidget* browse_header_bar;
     GtkWidget* browse_stack_switcher;
+    GtkWidget* chat_view;
 
     GtkWidget* info_revealer;
     GtkWidget* info_label;
     GtkWidget* info_bar;
     GtkWidget* info_bar_yes_button;
 
+    GtSettingsDlg* settings_dlg;
+
     gboolean fullscreen;
+
+    GtChannel* open_channel;
 } GtWinPrivate;
 
 G_DEFINE_TYPE_WITH_PRIVATE(GtWin, gt_win, GTK_TYPE_APPLICATION_WINDOW)
@@ -49,9 +55,6 @@ enum
     PROP_CHANNELS_VIEW,
     PROP_GAMES_VIEW,
     PROP_FULLSCREEN,
-    PROP_SHOWING_CHANNELS, //TODO: Get rid of these "showing" properties
-    PROP_SHOWING_FAVOURITES,
-    PROP_SHOWING_GAMES_VIEW,
     PROP_VISIBLE_VIEW,
     NUM_PROPS
 };
@@ -63,6 +66,7 @@ gt_win_new(GtApp* app)
 {
     return g_object_new(GT_TYPE_WIN,
                         "application", app,
+                        "show-menubar", FALSE,
                         NULL);
 }
 
@@ -98,9 +102,13 @@ show_settings_cb(GSimpleAction* action,
     GtWin* self = GT_WIN(udata);
     GtWinPrivate* priv = gt_win_get_instance_private(self);
 
-    GtSettingsDlg* settings_dlg = gt_settings_dlg_new(self);
+    if (!priv->settings_dlg)
+    {
+        priv->settings_dlg = gt_settings_dlg_new(self);
+        g_object_add_weak_pointer(G_OBJECT(priv->settings_dlg), (gpointer *) &priv->settings_dlg);
+    }
 
-    gtk_window_present(GTK_WINDOW(settings_dlg));
+    gtk_window_present(GTK_WINDOW(priv->settings_dlg));
 }
 
 static void
@@ -113,8 +121,8 @@ refresh_login_cb(GtkInfoBar* info_bar,
 
     switch (res)
     {
-        case GTK_RESPONSE_OK:
-            gtk_window_present(GTK_WINDOW(gt_twitch_login_dlg_new(self)));
+        case GTK_RESPONSE_YES:
+            gtk_window_present(GTK_WINDOW(gt_twitch_login_dlg_new(GTK_WINDOW(self))));
             break;
     }
 
@@ -143,9 +151,16 @@ show_twitch_login_cb(GSimpleAction* action,
 {
     GtWin* self = GT_WIN(udata);
     GtWinPrivate* priv = gt_win_get_instance_private(self);
-    const gchar* oauth = gt_app_get_oauth_token(main_app);
+    gchar* oauth_token;
+    gchar* user_name;
 
-    if (oauth && strlen(oauth) > 1)
+    g_object_get(main_app,
+                 "oauth-token", &oauth_token,
+                 "user-name", &user_name,
+                 NULL);
+
+    if (oauth_token && user_name &&
+        strlen(oauth_token) > 0 && strlen(user_name) > 0)
     {
         gtk_widget_set_visible(priv->info_bar_yes_button, TRUE);
         gtk_label_set_text(GTK_LABEL(priv->info_label), _("Already logged into Twitch, refresh login?"));
@@ -156,11 +171,31 @@ show_twitch_login_cb(GSimpleAction* action,
     }
     else
     {
-        GtTwitchLoginDlg* dlg = gt_twitch_login_dlg_new(self);
+        GtTwitchLoginDlg* dlg = gt_twitch_login_dlg_new(GTK_WINDOW(self));
 
         gtk_window_present(GTK_WINDOW(dlg));
     }
 }
+
+static void
+show_channel_info_cb(GSimpleAction* action,
+                     GVariant* arg,
+                     gpointer udata)
+{
+    GtWin* self = GT_WIN(udata);
+    GtWinPrivate* priv = gt_win_get_instance_private(self);
+    GtTwitchChannelInfoDlg* dlg = gt_twitch_channel_info_dlg_new(GTK_WINDOW(self));
+    const gchar* chan;
+
+    chan = gt_channel_get_name(priv->open_channel);
+
+    g_message("{GtWin} Showing channel info for '%s'", chan);
+
+    gtk_window_present(GTK_WINDOW(dlg));
+
+    gt_twitch_channel_info_dlg_load_channel(dlg, chan);
+}
+
 
 static void
 refresh_view_cb(GSimpleAction* action,
@@ -239,6 +274,22 @@ delete_cb(GtkWidget* widget,
     return FALSE;
 }
 
+static void
+close_player_cb(GSimpleAction* action,
+                GVariant* arg,
+                gpointer udata)
+{
+    GtWin* self = GT_WIN(udata);
+    GtWinPrivate* priv = gt_win_get_instance_private(self);
+
+    gt_player_close_channel(GT_PLAYER(self->player));
+
+    gtk_stack_set_visible_child_name(GTK_STACK(priv->header_stack),
+                                     "browse");
+    gtk_stack_set_visible_child_name(GTK_STACK(priv->main_stack),
+                                     "browse");
+}
+
 static GActionEntry win_actions[] =
 {
     {"refresh_view", refresh_view_cb, NULL, NULL, NULL},
@@ -246,6 +297,8 @@ static GActionEntry win_actions[] =
     {"show_about", show_about_cb, NULL, NULL, NULL},
     {"show_settings", show_settings_cb, NULL, NULL, NULL},
     {"show_twitch_login", show_twitch_login_cb, NULL, NULL, NULL},
+    {"show_channel_info", show_channel_info_cb, NULL, NULL, NULL},
+    {"close_player", close_player_cb, NULL, NULL, NULL},
 };
 
 static gboolean
@@ -266,16 +319,6 @@ window_state_cb(GtkWidget* widget,
     }
 
     return FALSE;
-}
-
-static void
-show_error_message(GtWin* self, const gchar* msg)
-{
-    GtWinPrivate* priv = gt_win_get_instance_private(self);
-
-    gtk_label_set_text(GTK_LABEL(priv->info_label), msg);
-    gtk_info_bar_set_message_type(GTK_INFO_BAR(priv->info_bar), GTK_MESSAGE_WARNING);
-    gtk_revealer_set_reveal_child(GTK_REVEALER(priv->info_revealer), TRUE);
 }
 
 static void
@@ -306,15 +349,6 @@ get_property (GObject*    obj,
             break;
         case PROP_FULLSCREEN:
             g_value_set_boolean(val, priv->fullscreen);
-            break;
-        case PROP_SHOWING_CHANNELS:
-            g_value_set_boolean(val, gtk_stack_get_visible_child(GTK_STACK(priv->browse_stack)) == priv->channels_view);
-            break;
-        case PROP_SHOWING_FAVOURITES:
-            g_value_set_boolean(val, gtk_stack_get_visible_child(GTK_STACK(priv->browse_stack)) == priv->favourites_view);
-            break;
-        case PROP_SHOWING_GAMES_VIEW:
-            g_value_set_boolean(val, gtk_stack_get_visible_child(GTK_STACK(priv->browse_stack)) == priv->games_view);
             break;
         case PROP_VISIBLE_VIEW:
             g_value_set_object(val, gtk_stack_get_visible_child(GTK_STACK(priv->browse_stack)));
@@ -367,21 +401,6 @@ gt_win_class_init(GtWinClass* klass)
                                                   "Whether window is fullscreen",
                                                   FALSE,
                                                   G_PARAM_READABLE);
-    props[PROP_SHOWING_CHANNELS] = g_param_spec_boolean("showing-channels",
-                                                        "Showing Channels",
-                                                        "Whether showing channels",
-                                                        FALSE,
-                                                        G_PARAM_READABLE);
-    props[PROP_SHOWING_FAVOURITES] = g_param_spec_boolean("showing-favourites",
-                                                          "Showing Favourites",
-                                                          "Whether showing favourites",
-                                                          FALSE,
-                                                          G_PARAM_READABLE);
-    props[PROP_SHOWING_GAMES_VIEW] = g_param_spec_boolean("showing-games-view",
-                                                          "Showing Games View",
-                                                          "Whether showing games view",
-                                                          FALSE,
-                                                          G_PARAM_READABLE);
     props[PROP_VISIBLE_VIEW] = g_param_spec_object("visible-view",
                                                    "Visible View",
                                                    "Visible View",
@@ -417,7 +436,7 @@ gt_win_init(GtWin* self)
 
     GT_TYPE_PLAYER; // Hack to load GtPlayer into the symbols table
     GT_TYPE_PLAYER_CLUTTER;
-    GT_TYPE_PLAYER_MPV;
+//    GT_TYPE_PLAYER_MPV;
     GT_TYPE_PLAYER_HEADER_BAR;
     GT_TYPE_BROWSE_HEADER_BAR;
     GT_TYPE_CHANNELS_VIEW;
@@ -425,19 +444,19 @@ gt_win_init(GtWin* self)
     GT_TYPE_FAVOURITES_VIEW;
     GT_TYPE_TWITCH_CHAT_VIEW;
 
+//    self->open_channel = NULL;
+
     gtk_window_set_default_size(GTK_WINDOW(self),
                                 g_settings_get_int(main_app->settings, "window-width"),
                                 g_settings_get_int(main_app->settings, "window-height"));
 
     gtk_widget_init_template(GTK_WIDGET(self));
 
-    g_object_set(self, "application", main_app, NULL); // Another hack because GTK is bugged and resets the app menu when using custom widgets
+//    g_object_set(self, "application", main_app, NULL); // Another hack because GTK is bugged and resets the app menu when using custom widgets
 
     g_object_bind_property(priv->browse_stack, "visible-child",
                            self, "visible-view",
                            G_BINDING_DEFAULT | G_BINDING_SYNC_CREATE);
-
-    /* gtk_widget_realize(GTK_WIDGET(priv->player)); */
 
     GdkScreen* screen = gdk_screen_get_default();
     GtkCssProvider* css = gtk_css_provider_new();
@@ -453,6 +472,10 @@ gt_win_init(GtWin* self)
                                     win_actions,
                                     G_N_ELEMENTS(win_actions),
                                     self);
+
+    GtkWindowGroup* window_group = gtk_window_group_new();
+    gtk_window_group_add_window(window_group, GTK_WINDOW(self));
+    g_object_unref(window_group);
 }
 
 //TODO: Make this action
@@ -461,24 +484,16 @@ gt_win_open_channel(GtWin* self, GtChannel* chan)
 {
     GtWinPrivate* priv = gt_win_get_instance_private(self);
 
-    gchar* status; gchar* display_name; gchar* name; gchar* token; gchar* sig;
-    g_object_get(chan,
-                 "display-name", &display_name,
-                 "name", &name,
-                 "status", &status,
-                 NULL);
+    g_clear_object(&priv->open_channel);
+    g_object_ref(chan);
+    priv->open_channel = chan;
 
     gt_player_open_channel(GT_PLAYER(self->player), chan);
-    gt_twitch_chat_client_join(main_app->chat, name);
 
     gtk_stack_set_visible_child_name(GTK_STACK(priv->main_stack),
                                      "player");
     gtk_stack_set_visible_child_name(GTK_STACK(priv->header_stack),
                                      "player");
-
-    g_free(name);
-    g_free(status);
-    g_free(display_name);
 }
 
 //TODO: Make these actions
