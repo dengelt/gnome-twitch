@@ -31,8 +31,10 @@ typedef struct
 
     gboolean joined_channel;
 
+    GtkWidget* error_label;
     GtkWidget* chat_view;
     GtkWidget* chat_scroll;
+    GtkAdjustment* chat_adjustment;
     GtkWidget* chat_entry;
     GtkTextBuffer* chat_buffer;
     GtkTextTagTable* tag_table;
@@ -52,6 +54,13 @@ typedef struct
 
     GtTwitchChatClient* chat;
     gchar* cur_chan;
+
+    gdouble prev_scroll_val;
+    gdouble prev_scroll_upper;
+    gboolean prev_sticky;
+
+    gboolean chat_sticky;
+
 } GtTwitchChatViewPrivate;
 
 G_DEFINE_TYPE_WITH_PRIVATE(GtTwitchChatView, gt_twitch_chat_view, GTK_TYPE_BOX)
@@ -233,7 +242,20 @@ add_chat_msg(GtTwitchChatView* self,
     gtk_text_iter_forward_to_line_end(&priv->bottom_iter);
     gtk_text_buffer_insert(priv->chat_buffer, &priv->bottom_iter, "\n", -1);
     gtk_text_buffer_move_mark(priv->chat_buffer, priv->bottom_mark, &priv->bottom_iter);
-    gtk_text_view_scroll_mark_onscreen(GTK_TEXT_VIEW(priv->chat_view), priv->bottom_mark);
+
+    gdouble cur_val = gtk_adjustment_get_value(priv->chat_adjustment);
+    gdouble cur_upper = gtk_adjustment_get_upper(priv->chat_adjustment);
+
+    // Scrolling upwards causes the pos to be further from the bottom than the natural size increment
+    if (priv->chat_sticky && cur_val > priv->prev_scroll_val - cur_upper + priv->prev_scroll_upper - 10)
+    {
+        gtk_text_view_scroll_mark_onscreen(GTK_TEXT_VIEW(priv->chat_view), priv->bottom_mark);
+    }
+    else
+        priv->chat_sticky = FALSE;
+
+    priv->prev_scroll_val = cur_val;
+    priv->prev_scroll_upper = cur_upper;
 }
 
 static void
@@ -424,6 +446,33 @@ credentials_set_cb(GObject* source,
 }
 
 static void
+reconnect_cb(GtkButton* button,
+             gpointer udata)
+{
+    GtTwitchChatView* self = GT_TWITCH_CHAT_VIEW(udata);
+    GtTwitchChatViewPrivate* priv = gt_twitch_chat_view_get_instance_private(self);
+
+    gtk_stack_set_visible_child_name(GTK_STACK(priv->main_stack), "chatview");
+
+    gt_twitch_chat_client_connect(priv->chat,
+                                  gt_app_get_oauth_token(main_app),
+                                  gt_app_get_user_name(main_app));
+    gt_twitch_chat_client_join(priv->chat, priv->cur_chan);
+}
+
+static void
+edge_reached_cb(GtkScrolledWindow* scroll,
+                GtkPositionType pos,
+                gpointer udata)
+{
+    GtTwitchChatView* self = GT_TWITCH_CHAT_VIEW(udata);
+    GtTwitchChatViewPrivate* priv = gt_twitch_chat_view_get_instance_private(self);
+
+    if (pos == GTK_POS_BOTTOM)
+        priv->chat_sticky = TRUE;
+}
+
+static void
 anchored_cb(GtkWidget* widget,
             GtkWidget* prev_toplevel,
             gpointer udata)
@@ -440,6 +489,19 @@ anchored_cb(GtkWidget* widget,
     g_signal_connect(main_app, "notify::oauth-token", G_CALLBACK(credentials_set_cb), self);
 
     g_signal_handlers_disconnect_by_func(self, anchored_cb, udata); //One-shot
+}
+
+static void
+error_encountered_cb(GtTwitchChatClient* client,
+                     GError* err,
+                     gpointer udata)
+{
+    GtTwitchChatView* self = GT_TWITCH_CHAT_VIEW(udata);
+    GtTwitchChatViewPrivate* priv = gt_twitch_chat_view_get_instance_private(self);
+
+    gtk_label_set_label(GTK_LABEL(priv->error_label), err->message);
+
+    gtk_stack_set_visible_child_name(GTK_STACK(priv->main_stack), "errorview");
 }
 
 static void
@@ -514,6 +576,8 @@ gt_twitch_chat_view_class_init(GtTwitchChatViewClass* klass)
     gtk_widget_class_bind_template_child_private(widget_class, GtTwitchChatView, chat_scroll);
     gtk_widget_class_bind_template_child_private(widget_class, GtTwitchChatView, chat_entry);
     gtk_widget_class_bind_template_child_private(widget_class, GtTwitchChatView, main_stack);
+    gtk_widget_class_bind_template_child_private(widget_class, GtTwitchChatView, error_label);
+    gtk_widget_class_bind_template_callback(widget_class, reconnect_cb);
 
     props[PROP_DARK_THEME] = g_param_spec_boolean("dark-theme",
                                                   "Dark Theme",
@@ -536,6 +600,8 @@ gt_twitch_chat_view_init(GtTwitchChatView* self)
 
     gtk_widget_init_template(GTK_WIDGET(self));
 
+    priv->chat_adjustment = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(priv->chat_scroll));
+
     priv->action_group = g_simple_action_group_new();
     priv->dark_theme_action = g_property_action_new("dark-theme", self, "dark-theme");
     g_action_map_add_action(G_ACTION_MAP(priv->action_group), G_ACTION(priv->dark_theme_action));
@@ -555,9 +621,14 @@ gt_twitch_chat_view_init(GtTwitchChatView* self)
     priv->cur_chan = NULL;
 
     priv->joined_channel = FALSE;
+    priv->chat_sticky = TRUE;
+    priv->prev_scroll_val = 0;
+    priv->prev_scroll_upper = 0;
 
     g_signal_connect(priv->chat_entry, "key-press-event", G_CALLBACK(key_press_cb), self);
     g_signal_connect(self, "hierarchy-changed", G_CALLBACK(anchored_cb), self);
+    g_signal_connect(priv->chat, "error-encountered", G_CALLBACK(error_encountered_cb), self);
+    g_signal_connect(priv->chat_scroll, "edge-reached", G_CALLBACK(edge_reached_cb), self);
 
     g_source_set_callback((GSource*) priv->chat->source, (GSourceFunc) twitch_chat_source_cb, self, NULL);
 
@@ -591,6 +662,8 @@ gt_twitch_chat_view_disconnect(GtTwitchChatView* self)
 
     priv->joined_channel = FALSE;
 
-    gt_twitch_chat_client_part(priv->chat);
+    if (gt_twitch_chat_client_is_connected(priv->chat))
+                gt_twitch_chat_client_part(priv->chat);
+
     gtk_text_buffer_set_text(priv->chat_buffer, "", -1);
 }
