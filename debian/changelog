@@ -1,3 +1,9 @@
+gnome-twitch (0.1.1~gitr299-1) experimental; urgency=low
+
+  * New snapshot from upstream development branch
+
+ -- Tim Dengel <tim.dengel.debian@gmail.com>  Fri, 26 Feb 2016 12:05:10 +0100
+
 gnome-twitch (0.1.1~gitr295-2) experimental; urgency=low
 
   * New snapshot from upstream development branch
