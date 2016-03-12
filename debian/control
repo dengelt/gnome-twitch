@@ -5,6 +5,8 @@ Maintainer: Tim Dengel <tim.dengel.debian@gmail.com>
 Build-Depends: debhelper (>= 9), meson (>= 0.26.0), libgtk-3-dev (>= 3.16), libsoup2.4-dev, libjson-glib-dev, libgstreamer1.0-dev, libclutter-gst-3.0-dev, libclutter-gtk-1.0-dev
 Standards-Version: 3.9.7
 Homepage: https://github.com/Ippytraxx/gnome-twitch
+Vcs-Git: https://github.com/dengelt/gnome-twitch.git -b debian/sid
+Vcs-Browser: https://github.com/dengelt/gnome-twitch/tree/debian/sid
 
 Package: gnome-twitch
 Architecture: any
