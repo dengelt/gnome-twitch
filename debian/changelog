@@ -1,9 +1,10 @@
-gnome-twitch (0.1.0-2) unstable; urgency=low
+gnome-twitch (0.2.0-1) unstable; urgency=medium
 
-  * Fixed desktop file
-  * Fixed spelling error unkown -> unknown
+  * New upstream release (0.2.0)
+  * Removed -dbg package to automatically build -dbgsym package
+  * Bumped standard version from 3.9.6 to 3.9.7
 
- -- Tim Dengel <tim.dengel.debian@gmail.com>  Sat, 28 Nov 2015 19:56:57 +0100
+ -- Tim Dengel <tim.dengel.debian@gmail.com>  Fri, 08 Apr 2016 19:36:35 +0200
 
 gnome-twitch (0.1.0-1) unstable; urgency=low
 
