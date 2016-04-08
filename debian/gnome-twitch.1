@@ -1,7 +1,7 @@
 .\"                                      Hey, EMACS: -*- nroff -*-
-.\" (C) Copyright 2015 Tim Dengel <tim.dengel.debian@gmail.com>,
+.\" (C) Copyright 2015-2016 Tim Dengel <tim.dengel.debian@gmail.com>,
 .\"
-.TH GNOME-TWITCH 1 "October 19, 2015"
+.TH GNOME-TWITCH 1 "April 08, 2016"
 .\" Please adjust this date whenever revising the manpage.
 .\"
 .\" Some roff macros, for reference:
@@ -24,15 +24,21 @@ gnome-twitch provides a GTK3 interface for viewing streams on Twitch.
 .br
 At the moment you can
 .br
-* browse,
+* browse popular streams,
 .br
-* search,
+* browse streams by game,
 .br
-* view streams and
+* search for streams,
 .br
-* change the video quality.
+* view streams,
 .br
-More features like favorites, chat and recording streams are planned.
+* use the chat with a Twitch account,
+.br
+* change the video quality and
+.br
+* mark streams as favorites for faster access.
+.br
+More features like recording streams, VODs (Video-On-Demand), other player backends and integration of Twitch account features like following streams are planned.
 .PP
 .SH OPTIONS
 This program follows the usual GNU command line syntax, with long
@@ -45,6 +51,15 @@ Show summary of options.
 .B \-l, \-\-log\-level=\fILevel\fP
 Set logging level. 
 .br 
-Possible values for 
 .I Level
-are: Error, Critical, Warning, Message, Info, Debug, All.
+can be one of the following numbers:
+.br
+0 (Critical) 
+.br
+1 (Warning) 
+.br
+2 (Message)
+.br
+3 (Info)
+.br
+4 (Debug)
