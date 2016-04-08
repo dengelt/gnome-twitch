@@ -18,6 +18,9 @@ G_DECLARE_FINAL_TYPE(GtWin, gt_win, GT, WIN, GtkApplicationWindow)
 struct _GtWin
 {
     GtkApplicationWindow parent_instance;
+
+    GtkWidget* player;
+    //   GtChannel* open_channel;
 };
 
 GtWin* gt_win_new(GtApp* app);
@@ -32,6 +35,7 @@ void gt_win_show_favourites(GtWin* self);
 GtGamesView* gt_win_get_games_view(GtWin* self);
 GtChannelsView* gt_win_get_channels_view(GtWin* self);
 gboolean gt_win_get_fullscreen(GtWin* self);
+void gt_win_show_info_message(GtWin* self, const gchar* msg);
 
 G_END_DECLS
 

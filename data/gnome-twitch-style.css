@@ -54,3 +54,62 @@
     border-radius: 4px;
     opacity: 0.8;
 }
+
+.player-clutter .buffer-box GtkProgressBar
+{
+    color: white;
+}
+
+.gt-chat GtkTextView
+{
+    background-color: transparent;
+}
+
+.gt-chat GtkEntry
+{
+    background-color: transparent;
+    background-image: none;
+}
+
+.gt-chat GtkTextView.light-theme
+{
+    color: rgba(50, 50, 62, 1.0);
+}
+
+.gt-chat GtkTextView.dark-theme
+{
+    color: rgba(255, 255, 255, 1.0);
+}
+
+.gt-chat GtkTextView:selected,
+.gt-chat GtkEntry:selected
+{
+    color: @selected_fg_color;
+    background-color: @selected_bg_color;
+}
+
+.gt-chat GtkEntry.light-theme
+{
+    color: rgba(0, 0, 0, 1);
+    border-color: rgba(204, 204, 204, 1.0);
+}
+
+.gt-chat GtkEntry.dark-theme
+{
+    color: rgba(255, 255, 255, 1.0);
+    border-color: rgba(81, 81, 85, 1.0);
+}
+
+.empty-channels-box .empty-title,
+.empty-games-box .empty-title
+{
+    font-weight: bold;
+    font-size: large;
+}
+
+.empty-channels-box .empty-subtitle,
+.empty-games-box .empty-subtitle
+{
+    font-weight: lighter;
+    font-size: small;
+}
