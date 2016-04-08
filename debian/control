@@ -14,8 +14,13 @@ Depends: ${shlibs:Depends}, ${misc:Depends}
 Description: GNOME Twitch app for watching Twitch.tv streams without a browser or flash
  gnome-twitch provides a GTK3 interface for viewing streams on Twitch.
  At the moment you can 
-  * browse, 
-  * search,
-  * view streams and 
-  * change the video quality.
- More features like favorites, chat and recording streams are planned.
+  * browse popular streams,
+  * browse streams by game,
+  * search for streams,
+  * view streams,
+  * use the chat with a Twitch account,
+  * change the video quality,
+  * mark streams as favorites for faster access.
+ More features like recording streams, VODs (Video-On-Demand), 
+ other player backends and integration of Twitch account features 
+ like following streams are planned.
