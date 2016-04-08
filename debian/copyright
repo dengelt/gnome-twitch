@@ -3,11 +3,11 @@ Upstream-Name: gnome-twitch
 Source: https://github.com/Ippytraxx/gnome-twitch
 
 Files: *
-Copyright: 2015 Vincent Szolnoky <ippytraxx@installgentoo.com>
+Copyright: 2015-2016 Vincent Szolnoky <ippytraxx@installgentoo.com>
 License: GPL-3.0+
 
 Files: debian/*
-Copyright: 2015 Tim Dengel <tim.dengel.debian@gmail.com>
+Copyright: 2015-2016 Tim Dengel <tim.dengel.debian@gmail.com>
 License: GPL-3.0+
 
 License: GPL-3.0+
