@@ -1,0 +1,737 @@
+From: Tim Dengel <tim.dengel.debian@gmail.com>
+Date: Mon, 11 Apr 2016 00:07:51 +0200
+Subject: Fix translation issues
+
+* Updated/Fixed copyright information (de, fr, hu, ru, sr)
+* Updated project version number in some headers (de, hu, ru, sr)
+* Corrected Last-Translator field (de, fr)
+* Corrected Language-Team field (fr)
+* Re-Added bugtracker URL (hu)
+* Renamed pt_PT.po to pt.po to match the language field (see also #92)
+* Restored previous plural form for Russian, I suspect the new one
+  was a copy&paste error.
+  See https://localization-guide.readthedocs.org/en/latest/l10n/pluralforms.html
+  for a list of plural forms.
+* Fixed some minor issues in the German translation
+---
+ po/de.po       |  25 +++---
+ po/fr.po       |   9 +--
+ po/hu.po       |   9 +--
+ po/meson.build |   2 +-
+ po/pt.po       | 244 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ po/pt_PT.po    | 244 ---------------------------------------------------------
+ po/ru.po       |   9 ++-
+ po/sr.po       |   7 +-
+ 8 files changed, 274 insertions(+), 275 deletions(-)
+ create mode 100644 po/pt.po
+ delete mode 100644 po/pt_PT.po
+
+diff --git a/po/de.po b/po/de.po
+index da3e150..8cf4602 100644
+--- a/po/de.po
++++ b/po/de.po
+@@ -1,9 +1,10 @@
+ # Translation of gnome-twitch to German.
+ # Copyright (C) 2015 Philipp Fent <philipp@fent.de>
++#               2016 Kordian Bruck <k@bruck.me>
+ # This file is distributed under the same license as the gnome-twitch package.
+ msgid ""
+ msgstr ""
+-"Project-Id-Version: gnome-twitch 0.1.0\n"
++"Project-Id-Version: gnome-twitch 0.2.0\n"
+ "Report-Msgid-Bugs-To: https://github.com/Ippytraxx/gnome-twitch/issues/new\n"
+ "POT-Creation-Date: 2015-10-09 22:42+0200\n"
+ "PO-Revision-Date: 2016-04-04 18:36+0200\n"
+@@ -12,7 +13,7 @@ msgstr ""
+ "Content-Type: text/plain; charset=UTF-8\n"
+ "Content-Transfer-Encoding: 8bit\n"
+ "X-Generator: Poedit 1.8.4\n"
+-"Last-Translator: Philipp Fent <philipp@fent.de>\n"
++"Last-Translator: Kordian Bruck <k@bruck.me>\n"
+ "Plural-Forms: nplurals=2; plural=(n != 1);\n"
+ "Language: de\n"
+ 
+@@ -46,7 +47,7 @@ msgstr "Dunkels Design"
+ 
+ #: data/ui/gt-player-header-bar.ui:228
+ msgid "Opacity"
+-msgstr "Durchsichtigkeit"
++msgstr "Deckkraft"
+ 
+ #: data/ui/gt-player-header-bar.ui:247
+ msgid "Width"
+@@ -106,7 +107,7 @@ msgstr "Nicht angemeldet."
+ 
+ #: data/ui/gt-chat.ui:110
+ msgid "Click to login"
+-msgstr "Klicken um anzumelden"
++msgstr "Zum Anmelden klicken"
+ 
+ #: data/ui/gt-chat.ui:136
+ msgid "Click to reconnect"
+@@ -138,11 +139,11 @@ msgstr "Spiele"
+ 
+ #: src/gt-app.c:175
+ msgid "Refresh login"
+-msgstr "Anmeldung aktuallisieren"
++msgstr "Anmeldung aktualisieren"
+ 
+ #: src/gt-app.c:386 src/gt-twitch-login-dlg.c:27
+ msgid "Login to Twitch"
+-msgstr "In Twitch anmelden"
++msgstr "Bei Twitch anmelden"
+ 
+ #: src/gt-channels-container-child.c:102
+ #, c-format
+@@ -157,12 +158,12 @@ msgstr "%ld"
+ #: src/gt-channels-container-child.c:131
+ #, c-format
+ msgid "%2.1fh"
+-msgstr "%2.1f stunden."
++msgstr "%2.1f Stunden"
+ 
+ #: src/gt-channels-container-child.c:133
+ #, c-format
+ msgid "%ldm"
+-msgstr "%ld min."
++msgstr "%ld Minuten"
+ 
+ #: src/gt-channels-container-favourite.c:229
+ msgid "No channels favourited"
+@@ -170,7 +171,7 @@ msgstr "Keine Favoriten"
+ 
+ #: src/gt-channels-container-favourite.c:230
+ msgid "Favourite channels that you like for them to show up here"
+-msgstr "Beliebte Kanäle, welche du hier sehen möchtest"
++msgstr "Lieblingskanäle, die du hier sehen möchtest"
+ 
+ #: src/gt-channels-container-search.c:183
+ msgid "No channels found"
+@@ -178,7 +179,7 @@ msgstr "Keine Kanäle gefunden"
+ 
+ #: src/gt-channels-container-search.c:184 src/gt-games-container-search.c:203
+ msgid "Try a different search"
+-msgstr "Versuch eine andere Suche"
++msgstr "Versuche einen anderen Suchbegriff"
+ 
+ #: src/gt-channels-container-search.c:185
+ msgid "Searching channels"
+@@ -208,7 +209,7 @@ msgstr "Kanal %s ist jetzt online"
+ #: src/gt-favourites-manager.c:64
+ #, c-format
+ msgid "Streaming %s"
+-msgstr "Streame %s"
++msgstr "Streamt %s"
+ 
+ #: src/gt-game.c:111
+ msgid "Untitled broadcast"
+@@ -243,4 +244,4 @@ msgstr "Mitwirkende"
+ 
+ #: src/gt-win.c:176
+ msgid "Already logged into Twitch, refresh login?"
+-msgstr "Bereits in Twitch angemeldet, neu laden?"
++msgstr "Bereits bei Twitch angemeldet, neu laden?"
+diff --git a/po/fr.po b/po/fr.po
+index 1a36175..db9b938 100644
+--- a/po/fr.po
++++ b/po/fr.po
+@@ -1,20 +1,19 @@
+-# Translation of gnome-twitch to Swedish.
+-# Copyright (C) 2015-2016 Vincent Szolnoky <ippytraxx@installgentoo.com>
++# Translation of gnome-twitch to French.
++# Copyright (C) 2015-2016 mr-intrepide <theintrepid95@gmail.com>
+ # This file is distributed under the same license as the gnome-twitch package.
+-#
+ msgid ""
+ msgstr ""
+ "Project-Id-Version: gnome-twitch 0.2.0\n"
+ "Report-Msgid-Bugs-To: https://github.com/Ippytraxx/gnome-twitch/issues/new\n"
+ "POT-Creation-Date: 2016-04-03 20:55+0200\n"
+ "PO-Revision-Date: 2016-04-04 10:58+0200\n"
+-"Language-Team: mr-intrepide <theintrepid95@gmail.com>\n"
++"Language-Team: \n"
+ "MIME-Version: 1.0\n"
+ "Content-Type: text/plain; charset=UTF-8\n"
+ "Content-Transfer-Encoding: 8bit\n"
+ "X-Generator: Poedit 1.8.7\n"
+ "Plural-Forms: nplurals=2; plural=(n > 1);\n"
+-"Last-Translator: \n"
++"Last-Translator: mr-intrepide <theintrepid95@gmail.com>\n"
+ "Language: fr\n"
+ 
+ #: data/ui/app-menu.ui:6 data/ui/gt-settings-dlg.ui:6
+diff --git a/po/hu.po b/po/hu.po
+index 8ccd36b..000e28f 100644
+--- a/po/hu.po
++++ b/po/hu.po
+@@ -1,11 +1,10 @@
+-# Hungarian translation of the gnome-twitch package.
++# Translation of gnome-twitch to Hungarian.
++# Copyright (C) 2015-2016 Gergő Rubint <rubintgergo@gmail.com>
+ # This file is distributed under the same license as the gnome-twitch package.
+-# Copyright (C) Gergő Rubint <rubintgergo@gmail.com>, 2016.
+-#
+ msgid ""
+ msgstr ""
+-"Project-Id-Version: gnome-twitch\n"
+-"Report-Msgid-Bugs-To: \n"
++"Project-Id-Version: gnome-twitch 0.2.0\n"
++"Report-Msgid-Bugs-To: https://github.com/Ippytraxx/gnome-twitch/issues/new\n"
+ "POT-Creation-Date: 2016-04-06 19:58+0200\n"
+ "PO-Revision-Date: 2016-04-06 23:17+0200\n"
+ "Last-Translator: Gergő Rubint <rubintgergo@gmail.com>\n"
+diff --git a/po/meson.build b/po/meson.build
+index 1dcd36e..ec7773e 100644
+--- a/po/meson.build
++++ b/po/meson.build
+@@ -1,3 +1,3 @@
+-langs = ['de', 'pl', 'pt_PT', 'sv', 'fr', 'ru', 'sr', 'hu']
++langs = ['de', 'pl', 'pt', 'sv', 'fr', 'ru', 'sr', 'hu']
+ 
+ gettext('gnome-twitch', languages : langs)
+diff --git a/po/pt.po b/po/pt.po
+new file mode 100644
+index 0000000..1ba2512
+--- /dev/null
++++ b/po/pt.po
+@@ -0,0 +1,244 @@
++# Translation of gnome-twitch to Portuguese.
++# Copyright (C) 2016 Bruno Guerreiro <american.jesus.pt@gmail.com>
++# This file is distributed under the same license as the gnome-twitch package.
++msgid ""
++msgstr ""
++"Project-Id-Version: gnome-twitch 0.2.0\n"
++"Report-Msgid-Bugs-To: https://github.com/Ippytraxx/gnome-twitch/issues/new\n"
++"POT-Creation-Date: 2016-02-25 22:23+0000\n"
++"PO-Revision-Date: 2016-04-06 14:57+0100\n"
++"Last-Translator: Bruno Guerreiro <american.jesus.pt@gmail.com>\n"
++"Language-Team: Portuguese\n"
++"Language: pt\n"
++"MIME-Version: 1.0\n"
++"Content-Type: text/plain; charset=UTF-8\n"
++"Content-Transfer-Encoding: 8bit\n"
++"Plural-Forms: nplurals=2; plural=(n != 1);\n"
++"X-Generator: Virtaal 0.7.1\n"
++
++#: data/ui/app-menu.ui:6 data/ui/gt-settings-dlg.ui:6
++msgid "Settings"
++msgstr "Definições"
++
++#: data/ui/app-menu.ui:12
++msgid "About"
++msgstr "Sobre"
++
++#: data/ui/app-menu.ui:16
++msgid "Quit"
++msgstr "Sair"
++
++#: data/ui/gt-player-header-bar.ui:174 data/ui/gt-player-header-bar.ui:198
++msgid "Edit chat"
++msgstr "Editar chat"
++
++#: data/ui/gt-player-header-bar.ui:181 data/ui/gt-player-header-bar.ui:338
++msgid "Stream quality"
++msgstr "Qualidade de transmissão"
++
++#: data/ui/gt-player-header-bar.ui:213
++msgid "Dock chat"
++msgstr "Fixar chat"
++
++#: data/ui/gt-player-header-bar.ui:219
++msgid "Dark theme"
++msgstr "Tema escuro"
++
++#: data/ui/gt-player-header-bar.ui:228
++msgid "Opacity"
++msgstr "Transparência"
++
++#: data/ui/gt-player-header-bar.ui:247
++msgid "Width"
++msgstr "Largura"
++
++#: data/ui/gt-player-header-bar.ui:266
++msgid "Height"
++msgstr "Altura"
++
++#: data/ui/gt-player-header-bar.ui:285
++msgid "X position"
++msgstr "Posição X"
++
++#: data/ui/gt-player-header-bar.ui:306
++msgid "Y position"
++msgstr "Posição Y"
++
++#: data/ui/gt-player-header-bar.ui:346 data/ui/gt-settings-dlg.ui:38
++msgid "Source"
++msgstr "Fonte"
++
++#: data/ui/gt-player-header-bar.ui:354 data/ui/gt-settings-dlg.ui:39
++msgid "High"
++msgstr "Alto"
++
++#: data/ui/gt-player-header-bar.ui:362 data/ui/gt-settings-dlg.ui:40
++msgid "Medium"
++msgstr "Médio"
++
++#: data/ui/gt-player-header-bar.ui:370 data/ui/gt-settings-dlg.ui:41
++msgid "Low"
++msgstr "Baixo"
++
++#: data/ui/gt-player-header-bar.ui:378
++msgid "Mobile"
++msgstr "Móvel"
++
++#: data/ui/gt-settings-dlg.ui:14
++msgid "Use dark theme variant"
++msgstr "Usar variante tema escuro"
++
++#: data/ui/gt-settings-dlg.ui:26
++msgid "Default video quality:"
++msgstr "Qualidade de vídeo padrão:"
++
++#: data/ui/gt-chat.ui:44
++msgid "Send a message"
++msgstr "Enviar mensagem"
++
++#: data/ui/gt-chat.ui:70
++msgid "Connecting to chat"
++msgstr "A ligar ao chat"
++
++#: data/ui/gt-chat.ui:104
++msgid "Not logged into Twitch!"
++msgstr "Não autenticado no Twitch!"
++
++#: data/ui/gt-chat.ui:110
++msgid "Click to login"
++msgstr "Click para autenticar"
++
++#: data/ui/gt-chat.ui:136
++msgid "Click to reconnect"
++msgstr "Click para ligar novamente"
++
++#: data/ui/gt-win.ui:25 data/ui/gt-win.ui:131
++msgid "Browse"
++msgstr "Navegar"
++
++#: data/ui/gt-win.ui:35 data/ui/gt-win.ui:141
++msgid "Player"
++msgstr "Reprodutor"
++
++#: data/ui/gt-win.ui:71
++msgid "Yes"
++msgstr "Sim"
++
++#: data/ui/gt-win.ui:107
++msgid "Channels"
++msgstr "Canais"
++
++#: data/ui/gt-win.ui:116
++msgid "Favourites"
++msgstr "Favoritos"
++
++#: data/ui/gt-win.ui:125
++msgid "Games"
++msgstr "Jogos"
++
++#: src/gt-app.c:175
++msgid "Refresh login"
++msgstr "Atualizar autenticação"
++
++#: src/gt-app.c:386 src/gt-twitch-login-dlg.c:27
++msgid "Login to Twitch"
++msgstr "Autenticar no Twitch"
++
++#: src/gt-channels-container-child.c:102
++#, c-format
++msgid "%3.1fk"
++msgstr "%3.1fk"
++
++#: src/gt-channels-container-child.c:104
++#, c-format
++msgid "%ld"
++msgstr "%ld"
++
++#: src/gt-channels-container-child.c:131
++#, c-format
++msgid "%2.1fh"
++msgstr "%2.1fh"
++
++#: src/gt-channels-container-child.c:133
++#, c-format
++msgid "%ldm"
++msgstr "%ldm"
++
++#: src/gt-channels-container-favourite.c:229
++msgid "No channels favourited"
++msgstr "Nenhum canal como favorito"
++
++#: src/gt-channels-container-favourite.c:230
++msgid "Favourite channels that you like for them to show up here"
++msgstr "Canais favoritos que gosta para que eles apareçam aqui"
++
++#: src/gt-channels-container-search.c:183
++msgid "No channels found"
++msgstr "Não foram encontrados canais"
++
++#: src/gt-channels-container-search.c:184 src/gt-games-container-search.c:203
++msgid "Try a different search"
++msgstr "Tente uma pesquisa diferente"
++
++#: src/gt-channels-container-search.c:185
++msgid "Searching channels"
++msgstr "A pesquisar canais"
++
++#: src/gt-channels-container-game.c:174 src/gt-channels-container-top.c:155
++msgid "Loading channels"
++msgstr "A carregar canais"
++
++#: src/gt-games-container-search.c:202
++msgid "No games found"
++msgstr "Não foram encontrados jogos"
++
++#: src/gt-games-container-search.c:204
++msgid "Searching games"
++msgstr "A pesquisar jogos"
++
++#: src/gt-games-container-top.c:161
++msgid "Loading games"
++msgstr "A carregar jogos"
++
++#: src/gt-favourites-manager.c:63
++#, c-format
++msgid "Channel %s is now online"
++msgstr "Canal %s está agora online"
++
++#: src/gt-favourites-manager.c:64
++#, c-format
++msgid "Streaming %s"
++msgstr "A transmitir %s"
++
++#: src/gt-game.c:111
++msgid "Untitled broadcast"
++msgstr "Transmissão sem titulo"
++
++#: src/gt-player-clutter.c:295
++msgid "Loading stream"
++msgstr "A carregar transmissão"
++
++#: src/gt-player-clutter.c:410
++#, c-format
++msgid "Buffered %d%%"
++msgstr "Carregamento %d%%"
++
++#: src/gt-twitch-login-dlg.c:114
++msgid "Successfully logged in to Twitch!"
++msgstr "Autenticado com sucesso no Twitch!"
++
++#: src/gt-win.c:93
++msgid "Enjoy Twitch on your GNU/Linux desktop"
++msgstr "Desfrute o Twitch no seu ambiente de trabalho GNU/Linux"
++
++#: src/gt-win.c:97
++msgid "translator-credits"
++msgstr "Bruno Guerreiro <american.jesus.pt@gmail.com>"
++
++#: src/gt-win.c:100
++msgid "Contributors"
++msgstr "Contribuidores"
++
++#: src/gt-win.c:176
++msgid "Already logged into Twitch, refresh login?"
++msgstr "Já inciou sessão no Twitch, atualizar sessão?"
+diff --git a/po/pt_PT.po b/po/pt_PT.po
+deleted file mode 100644
+index 1ba2512..0000000
+--- a/po/pt_PT.po
++++ /dev/null
+@@ -1,244 +0,0 @@
+-# Translation of gnome-twitch to Portuguese.
+-# Copyright (C) 2016 Bruno Guerreiro <american.jesus.pt@gmail.com>
+-# This file is distributed under the same license as the gnome-twitch package.
+-msgid ""
+-msgstr ""
+-"Project-Id-Version: gnome-twitch 0.2.0\n"
+-"Report-Msgid-Bugs-To: https://github.com/Ippytraxx/gnome-twitch/issues/new\n"
+-"POT-Creation-Date: 2016-02-25 22:23+0000\n"
+-"PO-Revision-Date: 2016-04-06 14:57+0100\n"
+-"Last-Translator: Bruno Guerreiro <american.jesus.pt@gmail.com>\n"
+-"Language-Team: Portuguese\n"
+-"Language: pt\n"
+-"MIME-Version: 1.0\n"
+-"Content-Type: text/plain; charset=UTF-8\n"
+-"Content-Transfer-Encoding: 8bit\n"
+-"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+-"X-Generator: Virtaal 0.7.1\n"
+-
+-#: data/ui/app-menu.ui:6 data/ui/gt-settings-dlg.ui:6
+-msgid "Settings"
+-msgstr "Definições"
+-
+-#: data/ui/app-menu.ui:12
+-msgid "About"
+-msgstr "Sobre"
+-
+-#: data/ui/app-menu.ui:16
+-msgid "Quit"
+-msgstr "Sair"
+-
+-#: data/ui/gt-player-header-bar.ui:174 data/ui/gt-player-header-bar.ui:198
+-msgid "Edit chat"
+-msgstr "Editar chat"
+-
+-#: data/ui/gt-player-header-bar.ui:181 data/ui/gt-player-header-bar.ui:338
+-msgid "Stream quality"
+-msgstr "Qualidade de transmissão"
+-
+-#: data/ui/gt-player-header-bar.ui:213
+-msgid "Dock chat"
+-msgstr "Fixar chat"
+-
+-#: data/ui/gt-player-header-bar.ui:219
+-msgid "Dark theme"
+-msgstr "Tema escuro"
+-
+-#: data/ui/gt-player-header-bar.ui:228
+-msgid "Opacity"
+-msgstr "Transparência"
+-
+-#: data/ui/gt-player-header-bar.ui:247
+-msgid "Width"
+-msgstr "Largura"
+-
+-#: data/ui/gt-player-header-bar.ui:266
+-msgid "Height"
+-msgstr "Altura"
+-
+-#: data/ui/gt-player-header-bar.ui:285
+-msgid "X position"
+-msgstr "Posição X"
+-
+-#: data/ui/gt-player-header-bar.ui:306
+-msgid "Y position"
+-msgstr "Posição Y"
+-
+-#: data/ui/gt-player-header-bar.ui:346 data/ui/gt-settings-dlg.ui:38
+-msgid "Source"
+-msgstr "Fonte"
+-
+-#: data/ui/gt-player-header-bar.ui:354 data/ui/gt-settings-dlg.ui:39
+-msgid "High"
+-msgstr "Alto"
+-
+-#: data/ui/gt-player-header-bar.ui:362 data/ui/gt-settings-dlg.ui:40
+-msgid "Medium"
+-msgstr "Médio"
+-
+-#: data/ui/gt-player-header-bar.ui:370 data/ui/gt-settings-dlg.ui:41
+-msgid "Low"
+-msgstr "Baixo"
+-
+-#: data/ui/gt-player-header-bar.ui:378
+-msgid "Mobile"
+-msgstr "Móvel"
+-
+-#: data/ui/gt-settings-dlg.ui:14
+-msgid "Use dark theme variant"
+-msgstr "Usar variante tema escuro"
+-
+-#: data/ui/gt-settings-dlg.ui:26
+-msgid "Default video quality:"
+-msgstr "Qualidade de vídeo padrão:"
+-
+-#: data/ui/gt-chat.ui:44
+-msgid "Send a message"
+-msgstr "Enviar mensagem"
+-
+-#: data/ui/gt-chat.ui:70
+-msgid "Connecting to chat"
+-msgstr "A ligar ao chat"
+-
+-#: data/ui/gt-chat.ui:104
+-msgid "Not logged into Twitch!"
+-msgstr "Não autenticado no Twitch!"
+-
+-#: data/ui/gt-chat.ui:110
+-msgid "Click to login"
+-msgstr "Click para autenticar"
+-
+-#: data/ui/gt-chat.ui:136
+-msgid "Click to reconnect"
+-msgstr "Click para ligar novamente"
+-
+-#: data/ui/gt-win.ui:25 data/ui/gt-win.ui:131
+-msgid "Browse"
+-msgstr "Navegar"
+-
+-#: data/ui/gt-win.ui:35 data/ui/gt-win.ui:141
+-msgid "Player"
+-msgstr "Reprodutor"
+-
+-#: data/ui/gt-win.ui:71
+-msgid "Yes"
+-msgstr "Sim"
+-
+-#: data/ui/gt-win.ui:107
+-msgid "Channels"
+-msgstr "Canais"
+-
+-#: data/ui/gt-win.ui:116
+-msgid "Favourites"
+-msgstr "Favoritos"
+-
+-#: data/ui/gt-win.ui:125
+-msgid "Games"
+-msgstr "Jogos"
+-
+-#: src/gt-app.c:175
+-msgid "Refresh login"
+-msgstr "Atualizar autenticação"
+-
+-#: src/gt-app.c:386 src/gt-twitch-login-dlg.c:27
+-msgid "Login to Twitch"
+-msgstr "Autenticar no Twitch"
+-
+-#: src/gt-channels-container-child.c:102
+-#, c-format
+-msgid "%3.1fk"
+-msgstr "%3.1fk"
+-
+-#: src/gt-channels-container-child.c:104
+-#, c-format
+-msgid "%ld"
+-msgstr "%ld"
+-
+-#: src/gt-channels-container-child.c:131
+-#, c-format
+-msgid "%2.1fh"
+-msgstr "%2.1fh"
+-
+-#: src/gt-channels-container-child.c:133
+-#, c-format
+-msgid "%ldm"
+-msgstr "%ldm"
+-
+-#: src/gt-channels-container-favourite.c:229
+-msgid "No channels favourited"
+-msgstr "Nenhum canal como favorito"
+-
+-#: src/gt-channels-container-favourite.c:230
+-msgid "Favourite channels that you like for them to show up here"
+-msgstr "Canais favoritos que gosta para que eles apareçam aqui"
+-
+-#: src/gt-channels-container-search.c:183
+-msgid "No channels found"
+-msgstr "Não foram encontrados canais"
+-
+-#: src/gt-channels-container-search.c:184 src/gt-games-container-search.c:203
+-msgid "Try a different search"
+-msgstr "Tente uma pesquisa diferente"
+-
+-#: src/gt-channels-container-search.c:185
+-msgid "Searching channels"
+-msgstr "A pesquisar canais"
+-
+-#: src/gt-channels-container-game.c:174 src/gt-channels-container-top.c:155
+-msgid "Loading channels"
+-msgstr "A carregar canais"
+-
+-#: src/gt-games-container-search.c:202
+-msgid "No games found"
+-msgstr "Não foram encontrados jogos"
+-
+-#: src/gt-games-container-search.c:204
+-msgid "Searching games"
+-msgstr "A pesquisar jogos"
+-
+-#: src/gt-games-container-top.c:161
+-msgid "Loading games"
+-msgstr "A carregar jogos"
+-
+-#: src/gt-favourites-manager.c:63
+-#, c-format
+-msgid "Channel %s is now online"
+-msgstr "Canal %s está agora online"
+-
+-#: src/gt-favourites-manager.c:64
+-#, c-format
+-msgid "Streaming %s"
+-msgstr "A transmitir %s"
+-
+-#: src/gt-game.c:111
+-msgid "Untitled broadcast"
+-msgstr "Transmissão sem titulo"
+-
+-#: src/gt-player-clutter.c:295
+-msgid "Loading stream"
+-msgstr "A carregar transmissão"
+-
+-#: src/gt-player-clutter.c:410
+-#, c-format
+-msgid "Buffered %d%%"
+-msgstr "Carregamento %d%%"
+-
+-#: src/gt-twitch-login-dlg.c:114
+-msgid "Successfully logged in to Twitch!"
+-msgstr "Autenticado com sucesso no Twitch!"
+-
+-#: src/gt-win.c:93
+-msgid "Enjoy Twitch on your GNU/Linux desktop"
+-msgstr "Desfrute o Twitch no seu ambiente de trabalho GNU/Linux"
+-
+-#: src/gt-win.c:97
+-msgid "translator-credits"
+-msgstr "Bruno Guerreiro <american.jesus.pt@gmail.com>"
+-
+-#: src/gt-win.c:100
+-msgid "Contributors"
+-msgstr "Contribuidores"
+-
+-#: src/gt-win.c:176
+-msgid "Already logged into Twitch, refresh login?"
+-msgstr "Já inciou sessão no Twitch, atualizar sessão?"
+diff --git a/po/ru.po b/po/ru.po
+index 0282364..a3bb642 100644
+--- a/po/ru.po
++++ b/po/ru.po
+@@ -1,9 +1,9 @@
+-# Translation of gnome-twitch to German.
+-# Copyright (C) 2015 Philipp Fent <philipp@fent.de>
++# Translation of gnome-twitch to Russian.
++# Copyright (C) 2015-2016 Sunderland93 <samoilov.lex@gmail.com>
+ # This file is distributed under the same license as the gnome-twitch package.
+ msgid ""
+ msgstr ""
+-"Project-Id-Version: gnome-twitch 0.1.0\n"
++"Project-Id-Version: gnome-twitch 0.2.0\n"
+ "Report-Msgid-Bugs-To: https://github.com/Ippytraxx/gnome-twitch/issues/new\n"
+ "POT-Creation-Date: 2015-10-09 22:42+0200\n"
+ "PO-Revision-Date: 2016-04-05 13:42+0900\n"
+@@ -13,7 +13,8 @@ msgstr ""
+ "Content-Transfer-Encoding: 8bit\n"
+ "X-Generator: Poedit 1.6.10\n"
+ "Last-Translator: Sunderland93 <samoilov.lex@gmail.com>\n"
+-"Plural-Forms: nplurals=2; plural=(n != 1);\n"
++"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n"
++"%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+ "Language: ru\n"
+ 
+ #: data/ui/app-menu.ui:6 data/ui/gt-settings-dlg.ui:6
+diff --git a/po/sr.po b/po/sr.po
+index f344cc1..37660de 100644
+--- a/po/sr.po
++++ b/po/sr.po
+@@ -1,11 +1,10 @@
+ # Translation of gnome-twitch to Serbian.
+-# Copyright (C) 2015 Марко М. Костић (Marko M. Kostić) <marko.m.kostic@gmail.com>
++# Copyright (C) 2015-2016 Марко М. Костић (Marko M. Kostić) <marko.m.kostic@gmail.com>
+ # This file is distributed under the same license as the gnome-twitch package.
+ msgid ""
+ msgstr ""
+-"Project-Id-Version: gnome-twitch 0.1.0\n"
+-"Report-Msgid-Bugs-To: https://github.com/Ippytraxx/gnome-twitch/issues/"
+-"new\n"
++"Project-Id-Version: gnome-twitch 0.2.0\n"
++"Report-Msgid-Bugs-To: https://github.com/Ippytraxx/gnome-twitch/issues/new\n"
+ "POT-Creation-Date: 2015-10-15 19:21+0200\n"
+ "PO-Revision-Date: 2016-04-06 19:27+0200\n"
+ "Language-Team: \n"
