@@ -10,6 +10,35 @@ Files: debian/*
 Copyright: 2015-2016 Tim Dengel <tim.dengel.debian@gmail.com>
 License: GPL-3.0+
 
+Files: po/de.po
+Copyright: 2015 Philipp Fent <philipp@fent.de>
+           2016 Kordian Bruck <k@bruck.me>
+License: GPL-3.0+
+
+Files: po/fr.po
+Copyright: 2015-2016 mr-intrepide <theintrepid95@gmail.com>
+License: GPL-3.0+
+
+Files: po/hu.po
+Copyright: 2015-2016 Gergő Rubint <rubintgergo@gmail.com>
+License: GPL-3.0+
+
+Files: po/pt.po
+Copyright: 2016 Bruno Guerreiro <american.jesus.pt@gmail.com>
+License: GPL-3.0+
+
+Files: po/ru.po
+Copyright: 2015-2016 Sunderland93 <samoilov.lex@gmail.com>
+License: GPL-3.0+
+
+Files: po/sr.po
+Copyright: 2015-2016 Марко М. Костић (Marko M. Kostić) <marko.m.kostic@gmail.com>
+License: GPL-3.0+
+
+Files: po/sv.po
+Copyright: 2015-2016 Vincent Szolnoky <ippytraxx@installgentoo.com>
+License: GPL-3.0+
+
 License: GPL-3.0+
  This program is free software: you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
