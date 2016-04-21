@@ -1,7 +1,10 @@
-gnome-twitch (0.2.0-1) unstable; urgency=medium
+gnome-twitch (0.2.0-1) unstable; urgency=low
 
   * New upstream release (0.2.0)
-  * Removed -dbg package to automatically build -dbgsym package
+  * Use hardening options
+  * Updated dependencies:
+    * Only link to needed libraries
+    * Added gstreamer1.0-plugins-ugly for x264 codec
   * Bumped standard version from 3.9.6 to 3.9.7
 
  -- Tim Dengel <tim.dengel.debian@gmail.com>  Fri, 08 Apr 2016 19:36:35 +0200
