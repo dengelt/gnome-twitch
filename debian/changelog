@@ -1,3 +1,10 @@
+gnome-twitch (0.2.0-2) unstable; urgency=medium
+
+  * Use new meson syntax for gettext (Closes: #828714)
+  * Updated dependency on meson accordingly
+
+ -- Tim Dengel <tim.dengel.debian@gmail.com>  Mon, 27 Jun 2016 20:19:01 +0200
+
 gnome-twitch (0.2.0-1) unstable; urgency=low
 
   * New upstream release (0.2.0)
