@@ -1,0 +1,19 @@
+From: Tim Dengel <tim.dengel.debian@gmail.com>
+Date: Mon, 27 Jun 2016 18:33:35 +0200
+Subject: Adapt gettext call to new meson syntax
+
+---
+ po/meson.build | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/po/meson.build b/po/meson.build
+index ec7773e..6f711d1 100644
+--- a/po/meson.build
++++ b/po/meson.build
+@@ -1,3 +1,5 @@
++i18n = import('i18n')
++
+ langs = ['de', 'pl', 'pt', 'sv', 'fr', 'ru', 'sr', 'hu']
+ 
+-gettext('gnome-twitch', languages : langs)
++i18n.gettext('gnome-twitch', languages : langs)
