@@ -1,3 +1,10 @@
+gnome-twitch (0.2.0-3) unstable; urgency=medium
+
+  * replace unsafe calls to sprintf-like functions
+    with safer alternatives
+
+ -- Tim Dengel <tim.dengel.debian@gmail.com>  Sun, 17 Jul 2016 23:24:52 +0200
+
 gnome-twitch (0.2.0-2) unstable; urgency=medium
 
   * Use new meson syntax for gettext (Closes: #828714)
