@@ -1,3 +1,9 @@
+gnome-twitch (0.2.0-4) unstable; urgency=low
+
+  * Make ninja output all compiler commands (Closes: #832157)
+
+ -- Tim Dengel <tim.dengel.debian@gmail.com>  Sat, 23 Jul 2016 03:25:52 +0200
+
 gnome-twitch (0.2.0-3) unstable; urgency=medium
 
   * replace unsafe calls to sprintf-like functions
