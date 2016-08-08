@@ -1,3 +1,9 @@
+gnome-twitch (0.2.1-1) unstable; urgency=medium
+
+  * New upstream release (0.2.1)
+
+ -- Tim Dengel <tim.dengel.debian@gmail.com>  Mon, 08 Aug 2016 11:42:26 +0200
+
 gnome-twitch (0.2.0-4) unstable; urgency=low
 
   * Make ninja output all compiler commands (Closes: #832157)
