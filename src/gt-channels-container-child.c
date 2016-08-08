@@ -92,19 +92,19 @@ viewers_converter(GBinding* bind,
                   gpointer udata)
 {
     gint64 viewers;
-    gchar label[20];
+    gchar* label = NULL;
 
     if (g_value_get_int64(from) > -1)
     {
         viewers = g_value_get_int64(from);
 
         if (viewers > 1e4)
-            g_sprintf(label, _("%3.1fk"), (gdouble) viewers / 1e3);
+            label = g_strdup_printf(_("%3.1fk"), (gdouble) viewers / 1e3);
         else
-            g_sprintf(label, _("%ld"), viewers);
+            label = g_strdup_printf(_("%ld"), viewers);
     }
 
-    g_value_set_string(to, label);
+    g_value_take_string(to, label);
 
     return TRUE;
 }
@@ -115,7 +115,7 @@ time_converter(GBinding* bind,
                GValue* to,
                gpointer udata)
 {
-    gchar label[100];
+    gchar* label = NULL;
     GDateTime* now_time;
     GDateTime* stream_started_time;
     GTimeSpan dif;
@@ -128,14 +128,14 @@ time_converter(GBinding* bind,
         dif = g_date_time_difference(now_time, stream_started_time);
 
         if (dif > G_TIME_SPAN_HOUR)
-            g_sprintf(label, _("%2.1fh"), (gdouble) dif / G_TIME_SPAN_HOUR);
+            label = g_strdup_printf(_("%2.1fh"), (gdouble) dif / G_TIME_SPAN_HOUR);
         else
-            g_sprintf(label, _("%ldm"), dif / G_TIME_SPAN_MINUTE);
+            label  = g_strdup_printf(_("%ldm"), dif / G_TIME_SPAN_MINUTE);
 
         g_date_time_unref(now_time);
     }
 
-    g_value_set_string(to, label);
+    g_value_take_string(to, label);
 
     return TRUE;
 }
@@ -166,6 +166,24 @@ finalize(GObject* object)
     g_object_unref(priv->channel);
 
     G_OBJECT_CLASS(gt_channels_container_child_parent_class)->finalize(object);
+}
+
+static void
+realise_cb(GtkWidget* widget,
+           gpointer udata)
+{
+    GtChannelsContainerChild* self = GT_CHANNELS_CONTAINER_CHILD(widget);
+    GtChannelsContainerChildPrivate* priv = gt_channels_container_child_get_instance_private(self);
+
+    g_object_bind_property(priv->channel, "online",
+                           priv->viewers_label, "visible",
+                           G_BINDING_DEFAULT | G_BINDING_SYNC_CREATE);
+    g_object_bind_property(priv->channel, "online",
+                           priv->play_image, "visible",
+                           G_BINDING_DEFAULT | G_BINDING_SYNC_CREATE);
+    g_object_bind_property(priv->channel, "online",
+                           priv->bottom_box, "visible",
+                           G_BINDING_DEFAULT | G_BINDING_SYNC_CREATE);
 }
 
 static void
@@ -225,15 +243,6 @@ constructed(GObject* obj)
     g_object_bind_property(priv->channel, "preview",
                            priv->preview_image, "pixbuf",
                            G_BINDING_DEFAULT | G_BINDING_SYNC_CREATE);
-    g_object_bind_property(priv->channel, "online",
-                           priv->viewers_label, "visible",
-                           G_BINDING_DEFAULT | G_BINDING_SYNC_CREATE);
-    g_object_bind_property(priv->channel, "online",
-                           priv->play_image, "visible",
-                           G_BINDING_DEFAULT | G_BINDING_SYNC_CREATE);
-    g_object_bind_property(priv->channel, "online",
-                           priv->bottom_box, "visible",
-                           G_BINDING_DEFAULT | G_BINDING_SYNC_CREATE);
     g_object_bind_property_full(priv->channel, "viewers",
                                 priv->viewers_label, "label",
                                 G_BINDING_DEFAULT | G_BINDING_SYNC_CREATE,
@@ -251,6 +260,8 @@ constructed(GObject* obj)
                                 NULL, NULL, NULL);
 
     g_signal_connect(priv->channel, "notify::online", G_CALLBACK(online_cb), self);
+
+    online_cb(NULL, NULL, self);
 
     G_OBJECT_CLASS(gt_channels_container_child_parent_class)->constructed(obj);
 }
@@ -298,6 +309,8 @@ static void
 gt_channels_container_child_init(GtChannelsContainerChild* self)
 {
     GtChannelsContainerChildPrivate* priv = gt_channels_container_child_get_instance_private(self);
+
+    g_signal_connect(self, "realize", G_CALLBACK(realise_cb), self);
 
     gtk_widget_init_template(GTK_WIDGET(self));
 }
