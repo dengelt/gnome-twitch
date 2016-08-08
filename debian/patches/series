@@ -1,4 +1,0 @@
-0001-Fix-translation-issues.patch
-0002-New-meson-behaviour-for-installing-data.patch
-0003-Adapt-gettext-call-to-new-meson-syntax.patch
-0004-Replace-all-sprintfs-that-have-dynamic-arguments.patch
