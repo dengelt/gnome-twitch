@@ -1,3 +1,10 @@
+gnome-twitch (0.3.0-1) UNRELEASED; urgency=medium
+
+  * New upstream release (0.3.0)
+    * Build player backends in multiple binary packages
+
+ -- Tim Dengel <tim.dengel.debian@gmail.com>  Sat, 03 Sep 2016 22:12:01 +0200
+
 gnome-twitch (0.2.1-1) unstable; urgency=medium
 
   * New upstream release (0.2.1)
