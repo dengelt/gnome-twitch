@@ -10,7 +10,12 @@ export DEB_LDFLAGS_MAINT_APPEND = -Wl,--as-needed
 	dh $@ 
 
 override_dh_auto_configure:
-	mkdir build && meson --buildtype plain --prefix /usr -Ddo-post-install=false . build
+	mkdir build && meson --buildtype plain --prefix /usr \
+	               -Ddo-post-install=false \
+	               -Dwith-player-mpv-opengl=true \
+	               -Dwith-player-gstreamer-clutter=true \
+	               -Dwith-player-gstreamer-cairo=true \
+	               -Dwith-player-gstreamer-opengl=true . build
 
 override_dh_auto_build:
 	$(MAKE) -C build all
