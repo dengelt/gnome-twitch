@@ -1,0 +1,2 @@
+debian/tmp/usr/lib/*/gnome-twitch/plugins/player-backends/player-backend-gstreamer-cairo.plugin
+debian/tmp/usr/lib/*/gnome-twitch/plugins/player-backends/libplayer-backend-gstreamer-cairo.so

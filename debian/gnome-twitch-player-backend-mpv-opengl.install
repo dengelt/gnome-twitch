@@ -1,0 +1,2 @@
+debian/tmp/usr/lib/*/gnome-twitch/plugins/player-backends/player-backend-mpv-opengl.plugin
+debian/tmp/usr/lib/*/gnome-twitch/plugins/player-backends/libplayer-backend-mpv-opengl.so

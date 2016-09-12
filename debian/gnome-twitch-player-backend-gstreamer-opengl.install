@@ -1,0 +1,2 @@
+debian/tmp/usr/lib/*/gnome-twitch/plugins/player-backends/player-backend-gstreamer-opengl.plugin
+debian/tmp/usr/lib/*/gnome-twitch/plugins/player-backends/libplayer-backend-gstreamer-opengl.so

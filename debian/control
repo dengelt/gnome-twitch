@@ -2,15 +2,15 @@ Source: gnome-twitch
 Section: video
 Priority: optional
 Maintainer: Tim Dengel <tim.dengel.debian@gmail.com>
-Build-Depends: debhelper (>= 9), meson (>= 0.32.0), libgtk-3-dev (>= 3.16), libsoup2.4-dev, libjson-glib-dev, libgstreamer1.0-dev, libclutter-gst-3.0-dev, libclutter-gtk-1.0-dev, libwebkit2gtk-4.0-dev
+Build-Depends: debhelper (>= 9), meson (>= 0.32.0), libgtk-3-dev (>= 3.16), libsoup2.4-dev, libjson-glib-dev, libgstreamer1.0-dev, libclutter-gst-3.0-dev, libclutter-gtk-1.0-dev, libwebkit2gtk-4.0-dev, libmpv-dev
 Standards-Version: 3.9.8
-Homepage: https://github.com/Ippytraxx/gnome-twitch
+Homepage: https://github.com/vinszent/gnome-twitch
 Vcs-Git: https://github.com/dengelt/gnome-twitch.git -b debian/sid
 Vcs-Browser: https://github.com/dengelt/gnome-twitch/tree/debian/sid
 
 Package: gnome-twitch
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, gstreamer1.0-plugins-ugly
+Depends: ${shlibs:Depends}, ${misc:Depends}, gnome-twitch-player-backend-gstreamer-cairo (= ${binary:Version}) | gnome-twitch-player-backend-gstreamer-opengl (= ${binary:Version}) | gnome-twitch-player-backend-gstreamer-clutter (= ${binary:Version}) | gnome-twitch-player-backend-mpv-opengl (= ${binary:Version})
 Description: GNOME Twitch app for watching Twitch.tv streams without a browser or flash
  gnome-twitch provides a GTK3 interface for viewing streams on Twitch.
  At the moment you can 
@@ -20,7 +20,44 @@ Description: GNOME Twitch app for watching Twitch.tv streams without a browser o
   * view streams,
   * use the chat with a Twitch account,
   * change the video quality,
-  * mark streams as favorites for faster access.
+  * follow streams on your Twitch account and
+  * switch between player backends.
  More features like recording streams, VODs (Video-On-Demand), 
- other player backends and integration of Twitch account features 
+ integration of Twitch account features 
  like following streams are planned.
+
+Package: gnome-twitch-player-backend-gstreamer-cairo
+Provides: gnome-twitch-player-backend
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, gstreamer1.0-plugins-ugly, gnome-twitch (= ${binary:Version})
+Description: Player backend for GNOME Twitch based on gstreamer+cairo
+ Player backends are responsible for playing the actual video streams.
+ Different player backends use different libraries to do this. 
+ This player backend uses gstreamer and cairo.
+
+Package: gnome-twitch-player-backend-gstreamer-opengl
+Provides: gnome-twitch-player-backend
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, gstreamer1.0-plugins-ugly, gnome-twitch (= ${binary:Version})
+Description: Player backend for GNOME Twitch based on gstreamer+opengl
+ Player backends are responsible for playing the actual video streams.
+ Different player backends use different libraries to do this.
+ This player backend uses gstreamer and opengl.
+
+Package: gnome-twitch-player-backend-gstreamer-clutter
+Provides: gnome-twitch-player-backend
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, gstreamer1.0-plugins-ugly, gnome-twitch (= ${binary:Version})
+Description: Player backend for GNOME Twitch based on gstreamer+clutter
+ Player backends are responsible for playing the actual video streams.
+ Different player backends use different libraries to do this.
+ This player backend uses gstreamer and clutter.
+
+Package: gnome-twitch-player-backend-mpv-opengl
+Provides: gnome-twitch-player-backend
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, gnome-twitch (= ${binary:Version})
+Description: Player backend for GNOME Twitch based on mpv
+ Player backends are responsible for playing the actual video streams.
+ Different player backends use different libraries to do this.
+ This player backend uses mpv and opengl.
