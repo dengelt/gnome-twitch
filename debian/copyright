@@ -3,7 +3,7 @@ Upstream-Name: gnome-twitch
 Source: https://github.com/Ippytraxx/gnome-twitch
 
 Files: *
-Copyright: 2015-2016 Vincent Szolnoky <ippytraxx@installgentoo.com>
+Copyright: 2015-2016 Vincent Szolnoky <vinszent@vinszent.com>
 License: GPL-3.0+
 
 Files: debian/*
@@ -23,6 +23,10 @@ Files: po/hu.po
 Copyright: 2015-2016 Gergő Rubint <rubintgergo@gmail.com>
 License: GPL-3.0+
 
+Files: po/pl.po
+Copyright: 2015-2016 Piotr Drąg <piotrdrag@gmail.com>
+License: GPL-3.0+
+
 Files: po/pt.po
 Copyright: 2016 Bruno Guerreiro <american.jesus.pt@gmail.com>
 License: GPL-3.0+
@@ -36,7 +40,7 @@ Copyright: 2015-2016 Марко М. Костић (Marko M. Kostić) <marko.m.kos
 License: GPL-3.0+
 
 Files: po/sv.po
-Copyright: 2015-2016 Vincent Szolnoky <ippytraxx@installgentoo.com>
+Copyright: 2015-2016 Vincent Szolnoky <vinszent@vinszent.com>
 License: GPL-3.0+
 
 License: GPL-3.0+
