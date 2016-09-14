@@ -27,7 +27,6 @@ Description: GNOME Twitch app for watching Twitch.tv streams without a browser o
  like following streams are planned.
 
 Package: gnome-twitch-player-backend-gstreamer-cairo
-Provides: gnome-twitch-player-backend
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, gstreamer1.0-plugins-ugly, gnome-twitch (= ${binary:Version})
 Description: Player backend for GNOME Twitch based on gstreamer+cairo
@@ -36,7 +35,6 @@ Description: Player backend for GNOME Twitch based on gstreamer+cairo
  This player backend uses GStreamer and cairo.
 
 Package: gnome-twitch-player-backend-gstreamer-opengl
-Provides: gnome-twitch-player-backend
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, gstreamer1.0-plugins-ugly, gnome-twitch (= ${binary:Version})
 Description: Player backend for GNOME Twitch based on gstreamer+opengl
@@ -45,7 +43,6 @@ Description: Player backend for GNOME Twitch based on gstreamer+opengl
  This player backend uses GStreamer and OpenGL.
 
 Package: gnome-twitch-player-backend-gstreamer-clutter
-Provides: gnome-twitch-player-backend
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, gstreamer1.0-plugins-ugly, gnome-twitch (= ${binary:Version})
 Description: Player backend for GNOME Twitch based on gstreamer+clutter
@@ -54,7 +51,6 @@ Description: Player backend for GNOME Twitch based on gstreamer+clutter
  This player backend uses GStreamer and clutter.
 
 Package: gnome-twitch-player-backend-mpv-opengl
-Provides: gnome-twitch-player-backend
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, gnome-twitch (= ${binary:Version})
 Description: Player backend for GNOME Twitch based on mpv
