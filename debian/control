@@ -33,7 +33,7 @@ Depends: ${shlibs:Depends}, ${misc:Depends}, gstreamer1.0-plugins-ugly, gnome-tw
 Description: Player backend for GNOME Twitch based on gstreamer+cairo
  Player backends are responsible for playing the actual video streams.
  Different player backends use different libraries to do this. 
- This player backend uses gstreamer and cairo.
+ This player backend uses GStreamer and cairo.
 
 Package: gnome-twitch-player-backend-gstreamer-opengl
 Provides: gnome-twitch-player-backend
@@ -42,7 +42,7 @@ Depends: ${shlibs:Depends}, ${misc:Depends}, gstreamer1.0-plugins-ugly, gnome-tw
 Description: Player backend for GNOME Twitch based on gstreamer+opengl
  Player backends are responsible for playing the actual video streams.
  Different player backends use different libraries to do this.
- This player backend uses gstreamer and opengl.
+ This player backend uses GStreamer and OpenGL.
 
 Package: gnome-twitch-player-backend-gstreamer-clutter
 Provides: gnome-twitch-player-backend
@@ -51,7 +51,7 @@ Depends: ${shlibs:Depends}, ${misc:Depends}, gstreamer1.0-plugins-ugly, gnome-tw
 Description: Player backend for GNOME Twitch based on gstreamer+clutter
  Player backends are responsible for playing the actual video streams.
  Different player backends use different libraries to do this.
- This player backend uses gstreamer and clutter.
+ This player backend uses GStreamer and clutter.
 
 Package: gnome-twitch-player-backend-mpv-opengl
 Provides: gnome-twitch-player-backend
@@ -60,4 +60,4 @@ Depends: ${shlibs:Depends}, ${misc:Depends}, gnome-twitch (= ${binary:Version})
 Description: Player backend for GNOME Twitch based on mpv
  Player backends are responsible for playing the actual video streams.
  Different player backends use different libraries to do this.
- This player backend uses mpv and opengl.
+ This player backend uses mpv and OpenGL.
