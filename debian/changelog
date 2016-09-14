@@ -2,6 +2,8 @@ gnome-twitch (0.3.0-1) unstable; urgency=medium
 
   * New upstream release (0.3.0)
     * Build player backends in multiple binary packages
+    * Add build-depends on libpeas-dev for new plugin system
+    * Add build-depends on libmpv-dev for mpv player backend
 
  -- Tim Dengel <tim.dengel.debian@gmail.com>  Sat, 03 Sep 2016 22:12:01 +0200
 
