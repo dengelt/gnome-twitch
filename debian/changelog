@@ -1,3 +1,10 @@
+gnome-twitch (0.3.0-2) unstable; urgency=medium
+
+  * Fix bug to correctly append the client ID
+    only once per request
+
+ -- Tim Dengel <tim.dengel.debian@gmail.com>  Thu, 15 Sep 2016 18:50:51 +0200
+
 gnome-twitch (0.3.0-1) unstable; urgency=medium
 
   * New upstream release (0.3.0)
