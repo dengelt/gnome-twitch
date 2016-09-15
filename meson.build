@@ -18,7 +18,7 @@ if get_option('do-post-install')
 endif
 
 if WITH_PLAYER_GSTREAMER_CLUTTER
-   subproject('player-backend-gstreamer-clutter')
+   subprojec('player-backend-gstreamer-clutter')
 endif
 if WITH_PLAYER_MPV_OPENGL
    subproject('player-backend-mpv-opengl')
