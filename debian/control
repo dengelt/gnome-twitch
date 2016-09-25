@@ -10,7 +10,8 @@ Vcs-Browser: https://github.com/dengelt/gnome-twitch/tree/debian/sid
 
 Package: gnome-twitch
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, gnome-twitch-player-backend-gstreamer-cairo (= ${binary:Version}) | gnome-twitch-player-backend-gstreamer-opengl (= ${binary:Version}) | gnome-twitch-player-backend-gstreamer-clutter (= ${binary:Version}) | gnome-twitch-player-backend-mpv-opengl (= ${binary:Version})
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Recommends: gnome-twitch-player-backend-gstreamer-cairo (= ${binary:Version}) | gnome-twitch-player-backend-gstreamer-opengl (= ${binary:Version}) | gnome-twitch-player-backend-gstreamer-clutter (= ${binary:Version}) | gnome-twitch-player-backend-mpv-opengl (= ${binary:Version})
 Description: GNOME Twitch app for watching Twitch.tv streams without a browser or flash
  gnome-twitch provides a GTK3 interface for viewing streams on Twitch.
  At the moment you can 
