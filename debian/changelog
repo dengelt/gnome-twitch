@@ -1,3 +1,12 @@
+gnome-twitch (0.3.0-3) unstable; urgency=medium
+
+  * Set priority to "extra"
+  * Make gnome-twitch recommend the player
+    backends instead of depending on them (Closes: #838830)
+  * Make the player backends "Multi-Arch: same"
+
+ -- Tim Dengel <tim.dengel.debian@gmail.com>  Sun, 25 Sep 2016 23:55:19 +0200
+
 gnome-twitch (0.3.0-2) unstable; urgency=medium
 
   * Fix bug to correctly append the client ID
