@@ -2,9 +2,9 @@
 
 Enjoy Twitch on your GNU/Linux desktop.
 
-[![Issues in ready](https://badge.waffle.io/vinszent/gnome-twitch.svg?label=ready&title=Ready)](http://waffle.io/vinszent/gnome-twitch) [![Issues in progress](https://badge.waffle.io/vinszent/gnome-twitch.svg?label=in%20progress&title=In%20progress)](http://waffle.io/vinszent/gnome-twitch)
-
 [![Gitter](https://badges.gitter.im/vinszent/gnome-twitch.svg)](https://gitter.im/gnome-twitch/Lobby?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge) (free tech support and development help ![datsheffy](https://static-cdn.jtvnw.net/emoticons/v1/170/1.0))
+
+## [Latest news](http://gnome-twitch.vinszent.com/posts/gnome-twitch-v0.3.0-post.html)
 
 ## Install
 ### Dependencies
@@ -63,8 +63,9 @@ meson --prefix ~/.local --libdir share ..
 ninja install
 ```
 
-### Distro packages
+### Packages
 * [Arch linux](https://aur.archlinux.org/packages/gnome-twitch/)
+* [Arch linux (MPV player backend plugin)](https://aur.archlinux.org/packages/gnome-twitch-mpv/)
 * [Arch linux (git)](https://aur.archlinux.org/packages/gnome-twitch-git/)
 * [Debian (courtesy of @dengelt)](https://tracker.debian.org/pkg/gnome-twitch/)
 * [Fedora](https://copr.fedoraproject.org/coprs/ippytraxx/gnome-twitch/) (You will need to install gstreamer1-libav from RPMFusion)
