@@ -1,0 +1,19 @@
+From: Tim Dengel <tim.dengel.debian@gmail.com>
+Date: Tue, 18 Oct 2016 20:35:34 +0200
+Subject: Update meson version number
+
+---
+ meson.build | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/meson.build b/meson.build
+index bf22230..996119f 100644
+--- a/meson.build
++++ b/meson.build
+@@ -1,5 +1,5 @@
+ project('gnome-twitch', 'c',
+-        version : '0.3.0',
++        version : '0.3.1',
+         meson_version : '>=0.31.0',
+         license : 'GPL3')
+ 
