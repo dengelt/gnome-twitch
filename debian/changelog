@@ -6,8 +6,9 @@ gnome-twitch (0.3.1-1) unstable; urgency=medium
     backends instead of depending on them (Closes: #838830)
   * Make the player backends "Multi-Arch: same"
   * Update dependency on libgtk-3-dev to ">=3.20"
+  * Add new and updated translation files to d/copyright
 
- -- Tim Dengel <tim.dengel.debian@gmail.com>  Sun, 18 Oct 2016 20:55:19 +0200
+ -- Tim Dengel <tim.dengel.debian@gmail.com>  Fri, 21 Oct 2016 22:55:19 +0200
 
 gnome-twitch (0.3.0-2) unstable; urgency=medium
 
