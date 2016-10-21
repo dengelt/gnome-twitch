@@ -10,9 +10,14 @@ Files: debian/*
 Copyright: 2015-2016 Tim Dengel <tim.dengel.debian@gmail.com>
 License: GPL-3.0+
 
+Files: po/cs.po
+Copyright: 2016 Radek Sprta <mail@radeksprta.eu>
+License: GPL-3.0+
+
 Files: po/de.po
 Copyright: 2015 Philipp Fent <philipp@fent.de>
            2016 Kordian Bruck <k@bruck.me>
+           2016 Tim Dengel <tim.dengel.debian@gmail.com>
 License: GPL-3.0+
 
 Files: po/fr.po
@@ -21,6 +26,10 @@ License: GPL-3.0+
 
 Files: po/hu.po
 Copyright: 2015-2016 Gergő Rubint <rubintgergo@gmail.com>
+License: GPL-3.0+
+
+Files: po/nl.po
+Copyright: 2016 Naessens Arne <arnenaessens@hotmail.com>
 License: GPL-3.0+
 
 Files: po/pl.po
