@@ -8,7 +8,7 @@ gnome-twitch (0.3.1-1) unstable; urgency=medium
   * Update dependency on libgtk-3-dev to ">=3.20"
   * Add new and updated translation files to d/copyright
 
- -- Tim Dengel <tim.dengel.debian@gmail.com>  Fri, 21 Oct 2016 22:55:19 +0200
+ -- Tim Dengel <tim.dengel.debian@gmail.com>  Sun, 06 Nov 2016 22:55:19 +0100
 
 gnome-twitch (0.3.0-2) unstable; urgency=medium
 
