@@ -4,11 +4,16 @@ gnome-twitch (0.3.1-1) unstable; urgency=medium
   * Set priority to "extra"
   * Make gnome-twitch recommend the player
     backends instead of depending on them (Closes: #838830)
-  * Make the player backends "Multi-Arch: same"
   * Update dependency on libgtk-3-dev to ">=3.20"
+  * Add missing runtime-dependencies on gstreamer plugins:
+    * gstreamer1.0-libav
+    * gstreamer1.0-plugins-base
+    * gstreamer1.0-plugins-good
+    * gstreamer1.0-plugins-bad
+  * Remove unnecessary dependency on gstreamer1.0-plugins-ugly
   * Add new and updated translation files to d/copyright
 
- -- Tim Dengel <tim.dengel.debian@gmail.com>  Sun, 06 Nov 2016 22:55:19 +0100
+ -- Tim Dengel <tim.dengel.debian@gmail.com>  Sun, 06 Nov 2016 12:55:19 +0100
 
 gnome-twitch (0.3.0-2) unstable; urgency=medium
 
