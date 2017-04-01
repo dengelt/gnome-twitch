@@ -1,0 +1,29 @@
+From: vinszent <vinszent@vinszent.com>
+Date: Sat, 1 Apr 2017 18:24:34 +0200
+Subject: Bump version to v0.4.0
+
+---
+ data/com.vinszent.GnomeTwitch.appdata.xml.in | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/data/com.vinszent.GnomeTwitch.appdata.xml.in b/data/com.vinszent.GnomeTwitch.appdata.xml.in
+index 442822c..52d0310 100644
+--- a/data/com.vinszent.GnomeTwitch.appdata.xml.in
++++ b/data/com.vinszent.GnomeTwitch.appdata.xml.in
+@@ -31,6 +31,16 @@
+     </screenshot>
+   </screenshots>
+   <releases>
++    <release date="2017-04-01" version="0.4.0">
++      <description>
++        <p>
++          This release is focused on improving stability and having
++          better error handling. Some key features have also been
++          implemented. These include better chat moving and resizing,
++          language selection, various UI additions, and more.
++        </p>
++      </description>
++    </release>
+     <release date="2016-10-15" version="0.3.1">
+       <description>
+         <p>This is a minor release to fix an error getting follows.</p>
