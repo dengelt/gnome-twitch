@@ -1,3 +1,21 @@
+/*
+ *  This file is part of GNOME Twitch - 'Enjoy Twitch on your GNU/Linux desktop'
+ *  Copyright © 2017 Vincent Szolnoky <vinszent@vinszent.com>
+ *
+ *  GNOME Twitch is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  GNOME Twitch is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with GNOME Twitch. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include "gt-twitch-channel-info-dlg.h"
 #include "gt-twitch.h"
 #include "gt-app.h"
@@ -65,9 +83,10 @@ tag_event_cb(GtkTextTag* tag,
     {
         if (((GdkEventButton*) evt)->button == 1)
         {
-            gtk_show_uri(gtk_widget_get_screen(GTK_WIDGET(self)),
-                         g_object_get_data(G_OBJECT(tag), "link"),
-                         GDK_CURRENT_TIME, NULL);
+            /* FIXME: Fix this once we re-enable this feature */
+            /* gtk_show_uri(gtk_widget_get_screen(GTK_WIDGET(self)), */
+            /*              g_object_get_data(G_OBJECT(tag), "link"), */
+            /*              GDK_CURRENT_TIME, NULL); */
         }
     }
 

@@ -1,10 +1,19 @@
-.gt-channels-container-child .overlay-box,
-.gt-games-container-child .overlay-box
+.gt-channels-container-child #overlay,
+.gt-games-container-child #overlay
 {
     background-color: rgba(0, 0, 0, 0.7);
 }
 
-.gt-channels-container-child .overlay-box .label
+.gt-channels-container-child #overlay,
+.gt-games-container-child #overlay
+{
+    padding: 7px;
+}
+
+.gt-channels-container-child #overlay label,
+.gt-channels-container-child #overlay image,
+.gt-games-container-child #overlay label,
+.gt-games-container-child #overlay image
 {
     color: rgba(109, 115, 128, 1);
 }
@@ -15,25 +24,29 @@
     padding: 7px;
 }
 
-.gt-channels-container-child .overlay-box .follow-button
+.gt-channels-container-child #follow-button
 {
     background-color: rgba(0, 0, 0, 0);
+    border-style: none;
+    box-shadow: none;
     background-image: none;
     border-style: none;
+    padding: 0px;
 }
 
-.gt-channels-container-child .overlay-box .follow-button:hover image
+.gt-channels-container-child #follow-button:hover image
 {
     transition: 150ms ease-in-out;
     color: gold;
 }
 
-.gt-channels-container-child .overlay-box .follow-button image
+.gt-channels-container-child #follow-button image
 {
+    transition: 150ms ease-in-out;
     color: rgba(109, 115, 128, 1);
 }
 
-.gt-channels-container-child .overlay-box .follow-button:checked image
+.gt-channels-container-child #follow-button:checked image
 {
     color: gold;
 }
@@ -43,7 +56,9 @@
     -gtk-icon-effect: dim;
 }
 
-.gt-channels-container-child-offline label
+.gt-channels-container-child-offline name-label,
+.gt-channels-container-child-offline game-label
+
 {
     color: alpha(currentColor,0.55);
 }
@@ -97,21 +112,26 @@
     border-color: rgba(81, 81, 85, 1.0);
 }
 
-.empty-link-button
+.gt-player #empty-link-button,
+.gt-item-container #empty-link-button,
+.gt-channels-container-child #error-link-button
 {
     padding-left: 0px;
     padding-right: 0px;
 }
 
-.empty-channels-box .empty-title,
-.empty-games-box .empty-title
+.gt-item-container #empty-label,
+.gt-player #empty-label
 {
     font-weight: bold;
     font-size: large;
 }
 
-.empty-channels-box .empty-subtitle,
-.empty-games-box .empty-subtitle
+.gt-item-container #empty-sub-label,
+.gt-item-container #empty-link-button,
+.gt-player #empty-sub-label,
+.gt-player #empty-link-button,
+.gt-channels-container-child #error-link-button
 {
     font-weight: lighter;
     font-size: small;
@@ -126,4 +146,32 @@
 #chat-entry image
 {
     transition: 300ms ease-in-out;
+}
+
+@keyframes blinker
+{
+	0% { border-color: black; }
+	50% { border-color: red; }
+	100% { border-color: black; }
+}
+
+.gt-player.edit-chat .gt-chat
+{
+    border-style: solid;
+	border-width: 4px;
+    border-color: red;
+	/* animation: blinker 1s linear infinite; */
+}
+
+.gt-error-dlg #info-label,
+.gt-error-dlg #error-label
+{
+    font-weight: bold;
+}
+
+.gt-channels-container-child #error-box
+{
+    border-color: black;
+    border-width: 1px;
+    border-style: solid;
 }

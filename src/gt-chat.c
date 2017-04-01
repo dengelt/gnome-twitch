@@ -1,3 +1,21 @@
+/*
+ *  This file is part of GNOME Twitch - 'Enjoy Twitch on your GNU/Linux desktop'
+ *  Copyright © 2017 Vincent Szolnoky <vinszent@vinszent.com>
+ *
+ *  GNOME Twitch is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  GNOME Twitch is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with GNOME Twitch. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include "gt-chat.h"
 #include "gt-irc.h"
 #include "gt-app.h"
@@ -18,14 +36,6 @@
 #define CHAT_LIGHT_THEME_CSS_CLASS "light-theme"
 #define CHAT_DARK_THEME_CSS ".gt-chat { background-color: rgba(25, 25, 31, %.2f); }"
 #define CHAT_LIGHT_THEME_CSS ".gt-chat { background-color: rgba(242, 242, 242, %.2f); }"
-
-#define USER_MODE_GLOBAL_MOD 1
-#define USER_MODE_ADMIN 1 << 2
-#define USER_MODE_BROADCASTER 1 << 3
-#define USER_MODE_MOD 1 << 4
-#define USER_MODE_STAFF 1 << 5
-#define USER_MODE_TURBO 1 << 6
-#define USER_MODE_SUBSCRIBER 1 << 7
 
 #define MAX_SCROLLBACK 1000 //TODO: Make this a setting
 #define SAVEUP_AMOUNT 100
@@ -51,8 +61,6 @@ typedef struct
     gdouble opacity;
     gchar* cur_theme;
 
-    gboolean joined_channel;
-
     GtkWidget* emote_popover;
     GtkWidget* emote_flow;
 
@@ -72,17 +80,17 @@ typedef struct
 
     GtkCssProvider* chat_css_provider;
 
-    GtChatBadges* chat_badges;
-    GCancellable* chat_badges_cancel;
-
-    GtIrc* chat;
-    gchar* cur_chan;
+    GtIrc* irc;
+    GCancellable* irc_cancel;
+    guint irc_disconnected_source;
+    GtChannel* chan;
 
     gboolean chat_sticky;
 
     GRegex* url_regex;
 
     GMutex mutex;
+
 } GtChatPrivate;
 
 G_DEFINE_TYPE_WITH_PRIVATE(GtChat, gt_chat, GTK_TYPE_BOX)
@@ -97,16 +105,8 @@ enum
 
 static GParamSpec* props[NUM_PROPS];
 
-GtChat*
-gt_chat_new()
-{
-    return g_object_new(GT_TYPE_CHAT,
-                        NULL);
-}
-
-
 //TODO: Use "unique" hash
-const gchar*
+static const gchar*
 get_default_chat_colour(const gchar* name)
 {
     gint total = 0;
@@ -125,7 +125,7 @@ send_msg_from_entry(GtChat* self)
 
     msg = gtk_entry_get_text(GTK_ENTRY(priv->chat_entry));
 
-    gt_irc_privmsg(priv->chat, msg);
+    gt_irc_privmsg(priv->irc, msg);
 
     gtk_entry_set_text(GTK_ENTRY(priv->chat_entry), "");
 }
@@ -178,7 +178,7 @@ emote_icon_press_cb(GtkEntry* entry,
 }
 
 static gint
-int_compare(const GtEmote* a, const GtEmote* b)
+int_compare(const GtChatEmote* a, const GtChatEmote* b)
 {
     return a->id - b->id;
 }
@@ -208,7 +208,11 @@ emoticons_cb(GObject* source,
 
     for (GList* l = emoticons; l != NULL; l = l->next)
     {
-        GtEmote* emote = l->data;
+        GtChatEmote* emote = l->data;
+
+        g_assert_nonnull(emote);
+        g_assert(GDK_IS_PIXBUF(emote->pixbuf));
+
         GtkWidget* image = gtk_image_new_from_pixbuf(emote->pixbuf);
         gchar* code = NULL;;
 
@@ -227,7 +231,7 @@ emoticons_cb(GObject* source,
         gtk_flow_box_insert(GTK_FLOW_BOX(priv->emote_flow), image, -1);
     }
 
-    gt_emote_list_free(emoticons);
+    gt_chat_emote_list_free(emoticons);
 }
 
 static gboolean
@@ -249,8 +253,37 @@ irc_source_cb(GtIrcMessage* msg,
 
         gtk_text_buffer_get_end_iter(priv->chat_buffer, &iter);
 
-        if (!(sender = privmsg->display_name) || strlen(sender) < 1)
-            sender = msg->nick;
+        //FIXME: Ideally the display name should be bold and the nick name should be normal,
+        //will do this later
+        if (utils_str_empty(privmsg->display_name))
+            sender = g_strdup(msg->nick);
+        else
+        {
+            g_assert(g_utf8_validate(privmsg->display_name, -1, NULL));
+
+            for (const gchar* next_unichar = privmsg->display_name; *next_unichar; next_unichar = g_utf8_next_char(next_unichar))
+            {
+                GUnicodeScript script = g_unichar_get_script(g_utf8_get_char(next_unichar));
+
+                switch (script)
+                {
+                    case G_UNICODE_SCRIPT_HIRAGANA:
+                    case G_UNICODE_SCRIPT_KATAKANA:
+                    case G_UNICODE_SCRIPT_HANGUL:
+                    case G_UNICODE_SCRIPT_HAN:
+                    {
+                        sender = g_strdup_printf("%s (%s)", privmsg->display_name, msg->nick);
+                            goto done;
+                    }
+                    default:
+                        break;
+                }
+            }
+
+            sender = g_strdup(privmsg->display_name);
+        }
+
+    done:
 
         if (!privmsg->colour || strlen(privmsg->colour) < 1)
             privmsg->colour = g_strdup(get_default_chat_colour(msg->nick));
@@ -265,21 +298,21 @@ irc_source_cb(GtIrcMessage* msg,
                                                     NULL);
         }
 
-        // Insert user mode pixbufs
-#define INSERT_USER_MODE_PIXBUF(mode, name)                             \
-        if (privmsg->user_modes & mode)                                 \
-        {                                                               \
-            gtk_text_buffer_insert_pixbuf(priv->chat_buffer, &iter, priv->chat_badges->name); \
-            gtk_text_buffer_insert(priv->chat_buffer, &iter, " ", -1);  \
-        }
+        for (GList* l = privmsg->badges; l != NULL; l = l->next)
+        {
+            g_assert_nonnull(l->data);
 
-        INSERT_USER_MODE_PIXBUF(IRC_USER_MODE_SUBSCRIBER, subscriber);
-        INSERT_USER_MODE_PIXBUF(IRC_USER_MODE_TURBO, turbo);
-        INSERT_USER_MODE_PIXBUF(IRC_USER_MODE_GLOBAL_MOD, global_mod);
-        INSERT_USER_MODE_PIXBUF(IRC_USER_MODE_BROADCASTER, broadcaster);
-        INSERT_USER_MODE_PIXBUF(IRC_USER_MODE_STAFF, staff);
-        INSERT_USER_MODE_PIXBUF(IRC_USER_MODE_ADMIN, admin);
-        INSERT_USER_MODE_PIXBUF(IRC_USER_MODE_MOD, mod);
+            GtChatBadge* badge = l->data;
+
+            /* NOTE: If for whatever reason the pixbuf is NULL we'll just insert the original text */
+            if (badge->pixbuf)
+            {
+                gtk_text_buffer_insert_pixbuf(priv->chat_buffer, &iter, GDK_PIXBUF(badge->pixbuf));
+                gtk_text_buffer_insert(priv->chat_buffer, &iter, " ", -1);
+            }
+            else
+                gtk_text_buffer_insert(priv->chat_buffer, &iter, badge->name, -1);
+        }
 
 #undef INSERT_USER_MOD_PIXBUF
 
@@ -315,11 +348,12 @@ irc_source_cb(GtIrcMessage* msg,
         gchar* c = g_utf8_offset_to_pointer(privmsg->msg, 0);
         gchar* d = g_utf8_offset_to_pointer(privmsg->msg, 1);
         GList* l = privmsg->emotes;
-        GtEmote* emote = NULL;
         for (gint i = 0; i < g_utf8_strlen(privmsg->msg, -1);
              ++i, c = g_utf8_offset_to_pointer(privmsg->msg, i),
                  d = g_utf8_offset_to_pointer(privmsg->msg, i + 1))
         {
+            GtChatEmote* emote = NULL;
+
             if (l) emote = l->data;
 
             if (emote && i == emote->start)
@@ -359,8 +393,7 @@ irc_source_cb(GtIrcMessage* msg,
         const gchar* emote_sets = utils_search_key_value_strv(msg->tags, "emote-sets");
 
         gt_twitch_emoticons_async(main_app->twitch, emote_sets,
-                                  (GAsyncReadyCallback) emoticons_cb,
-                                  NULL, self);
+            (GAsyncReadyCallback) emoticons_cb, NULL, self);
     }
 
     gt_irc_message_free(msg);
@@ -368,32 +401,6 @@ irc_source_cb(GtIrcMessage* msg,
     g_mutex_unlock(&priv->mutex);
 
     return G_SOURCE_CONTINUE;
-}
-
-static void
-chat_badges_cb(GObject* source,
-               GAsyncResult* res,
-               gpointer udata)
-{
-    GtChat* self = GT_CHAT(udata);
-    GtChatPrivate* priv = gt_chat_get_instance_private(self);
-    GtChatBadges* badges;
-
-    badges = g_task_propagate_pointer(G_TASK(res), NULL); //TODO: Error handling
-
-    if (priv->chat_badges)
-    {
-        g_clear_pointer(&priv->chat_badges, (GDestroyNotify) gt_chat_badges_free);
-    }
-
-    //TODO: Error handling
-    if (!badges)
-        return;
-
-    priv->chat_badges = badges;
-
-    gt_irc_connect_and_join_async(priv->chat, priv->cur_chan,
-                                  NULL, NULL, NULL);
 }
 
 static gboolean
@@ -428,9 +435,12 @@ chat_view_button_press_cb(GtkWidget* widget,
     for (GSList* l = tags; l != NULL; l = l->next)
     {
         gchar* url = g_object_get_data(G_OBJECT(l->data), "url");
+        GtWin* win = GT_WIN_TOPLEVEL(self);
 
-        if (url)
-            gtk_show_uri(gdk_screen_get_default(), url, GDK_CURRENT_TIME, NULL);
+        g_assert(GT_IS_WIN(win));
+
+        if (!utils_str_empty(url))
+            gtk_show_uri_on_window(GTK_WINDOW(win), url, GDK_CURRENT_TIME, NULL); /* FIXME: Handle error here */
     }
 
     g_slist_free(tags);
@@ -474,7 +484,6 @@ chat_view_motion_cb(GtkWidget* widget,
     gdk_window_set_cursor(evt->window, cursor);
 
     g_object_unref(cursor);
-
 
     return GDK_EVENT_PROPAGATE;
 }
@@ -520,30 +529,27 @@ credentials_set_cb(GObject* source,
     GtChat* self = GT_CHAT(udata);
     GtChatPrivate* priv = gt_chat_get_instance_private(self);
 
-    GtChannel* open_chan = NULL;
-
-    g_object_get(GT_WIN_TOPLEVEL(self)->player, "open-channel", &open_chan, NULL);
+    GtChannel* open_chan = gt_player_get_channel(GT_WIN_ACTIVE->player);
 
     gtk_stack_set_visible_child_name(GTK_STACK(priv->main_stack), "chatview");
 
     if (open_chan)
-    {
-        gt_chat_connect(self, gt_channel_get_name(open_chan));
-        g_object_unref(open_chan);
-    }
+        gt_chat_connect(self, open_chan);
 }
 
 static void
 reconnect_cb(GtkButton* button,
              gpointer udata)
 {
+    g_assert(GT_IS_CHAT(udata));
+
     GtChat* self = GT_CHAT(udata);
     GtChatPrivate* priv = gt_chat_get_instance_private(self);
 
     gtk_stack_set_visible_child_name(GTK_STACK(priv->main_stack), "chatview");
 
-    gt_irc_connect_and_join_async(priv->chat, priv->cur_chan,
-                                                 NULL, NULL, NULL);
+    gt_irc_connect_and_join_channel_async(priv->irc, priv->chan,
+        NULL, NULL, NULL);
 }
 
 static void
@@ -591,9 +597,10 @@ connected_cb(GObject* source,
     GtChat* self = GT_CHAT(udata);
     GtChatPrivate* priv = gt_chat_get_instance_private(self);
 
-    gtk_revealer_set_reveal_child(GTK_REVEALER(priv->connecting_revealer),
-                                  gt_irc_is_logged_in(priv->chat));
+    GtIrcState state = gt_irc_get_state(priv->irc);
 
+    gtk_revealer_set_reveal_child(GTK_REVEALER(priv->connecting_revealer),
+        state == GT_IRC_STATE_JOINED);
 }
 
 static void
@@ -604,11 +611,34 @@ after_connected_cb(GObject* source,
     GtChat* self = GT_CHAT(udata);
     GtChatPrivate* priv = gt_chat_get_instance_private(self);
 
+    GtIrcState state = gt_irc_get_state(priv->irc);
+
+    if (state == GT_IRC_STATE_CONNECTED)
+    {
+        gtk_widget_set_sensitive(priv->chat_entry,
+            gt_app_is_logged_in(main_app));
+        gtk_entry_set_placeholder_text(GTK_ENTRY(priv->chat_entry),
+            gt_app_is_logged_in(main_app)
+            ? _("Send a message") : _("Please login to chat"));
+    }
+}
+
+static void
+irc_state_changed_cb(GObject* source,
+    GParamSpec* pspec, gpointer udata)
+{
+    g_assert(GT_IS_CHAT(udata));
+    g_assert(GT_IS_IRC(source));
+
+    GtChat* self = GT_CHAT(udata);
+    GtChatPrivate* priv = gt_chat_get_instance_private(self);
+
+    GtIrcState state = gt_irc_get_state(priv->irc);
+
+    gtk_revealer_set_reveal_child(GTK_REVEALER(priv->connecting_revealer),
+        state != GT_IRC_STATE_JOINED);
     gtk_widget_set_sensitive(priv->chat_entry,
-                             gt_app_credentials_valid(main_app));
-    gtk_entry_set_placeholder_text(GTK_ENTRY(priv->chat_entry),
-                                   gt_app_credentials_valid(main_app)
-                                   ? _("Send a message") : _("Please login to chat"));
+        state == GT_IRC_STATE_JOINED && gt_app_is_logged_in(main_app));
 }
 
 static gboolean
@@ -638,7 +668,7 @@ finalise(GObject* obj)
 
     G_OBJECT_CLASS(gt_chat_parent_class)->finalize(obj);
 
-    g_object_unref(priv->chat);
+    g_object_unref(priv->irc);
 }
 
 static void
@@ -776,20 +806,22 @@ gt_chat_init(GtChat* self)
     priv->bottom_mark = gtk_text_buffer_create_mark(priv->chat_buffer, "end", &priv->bottom_iter, TRUE);
     priv->chat_adjustment = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(priv->chat_scroll));
 
-    priv->chat = gt_irc_new();
-    priv->cur_chan = NULL;
+    priv->irc = gt_irc_new();
+    priv->irc_cancel = g_cancellable_new();
+    priv->irc_disconnected_source = 0;
+    priv->chan = NULL;
 
-    priv->joined_channel = FALSE;
     priv->chat_sticky = TRUE;
 
     priv->url_regex = g_regex_new("(https?://([-\\w\\.]+)+(:\\d+)?(/([\\w/_\\.]*(\\?\\S+)?)?)?)",
                                   G_REGEX_OPTIMIZE, 0, NULL);
 
+
     g_signal_connect(priv->chat_entry, "key-press-event", G_CALLBACK(key_press_cb), self);
     utils_signal_connect_oneshot(self, "hierarchy-changed", G_CALLBACK(anchored_cb), self);
-    g_signal_connect(priv->chat, "error-encountered", G_CALLBACK(error_encountered_cb), self);
-    g_signal_connect(priv->chat, "notify::logged-in", G_CALLBACK(connected_cb), self);
-    g_signal_connect_after(priv->chat, "notify::logged-in", G_CALLBACK(after_connected_cb), self);
+    g_signal_connect(priv->irc, "error-encountered", G_CALLBACK(error_encountered_cb), self);
+    g_signal_connect(priv->irc, "notify::state", G_CALLBACK(connected_cb), self);
+    g_signal_connect_after(priv->irc, "notify::state", G_CALLBACK(after_connected_cb), self);
     g_signal_connect(priv->chat_scroll, "edge-reached", G_CALLBACK(edge_reached_cb), self);
     g_signal_connect(priv->chat_view, "button-press-event", G_CALLBACK(chat_view_button_press_cb), self);
     g_signal_connect(priv->chat_view, "motion-notify-event", G_CALLBACK(chat_view_motion_cb), self);
@@ -798,52 +830,107 @@ gt_chat_init(GtChat* self)
     g_signal_connect(priv->chat_adjustment, "value-changed", G_CALLBACK(value_changed), self);
     g_signal_connect(priv->chat_entry, "icon-press", G_CALLBACK(emote_icon_press_cb), self);
     g_signal_connect(priv->emote_flow, "child-activated", G_CALLBACK(emote_activated_cb), self);
+    g_signal_connect(priv->irc, "notify::state", G_CALLBACK(irc_state_changed_cb), self);
 
-    g_object_bind_property(priv->chat, "logged-in",
-                           priv->connecting_revealer, "reveal-child",
-                           G_BINDING_DEFAULT | G_BINDING_SYNC_CREATE | G_BINDING_INVERT_BOOLEAN);
-    g_object_bind_property(priv->chat, "logged-in",
-                           priv->chat_entry, "sensitive",
-                           G_BINDING_DEFAULT | G_BINDING_SYNC_CREATE);
+    /* g_object_bind_property(priv->irc, "logged-in", */
+    /*                        priv->connecting_revealer, "reveal-child", */
+    /*                        G_BINDING_DEFAULT | G_BINDING_SYNC_CREATE | G_BINDING_INVERT_BOOLEAN); */
+    /* g_object_bind_property(priv->irc, "logged-in", */
+    /*                        priv->chat_entry, "sensitive", */
+    /*                        G_BINDING_DEFAULT | G_BINDING_SYNC_CREATE); */
 
-    g_source_set_callback((GSource*) priv->chat->source, (GSourceFunc) irc_source_cb, self, NULL);
+    g_source_set_callback((GSource*) priv->irc->source, (GSourceFunc) irc_source_cb,
+        g_object_ref(self), g_object_unref);
 
     ADD_STYLE_CLASS(self, "gt-chat");
 }
 
-void
-gt_chat_connect(GtChat* self, const gchar* chan)
+static void
+disconnected_cb(GObject* source,
+    GParamSpec* pspec, gpointer udata)
 {
+    g_assert(GT_IS_CHAT(udata));
+    g_assert(GT_IS_IRC(source));
+
+    GtChat* self = GT_CHAT(udata);
     GtChatPrivate* priv = gt_chat_get_instance_private(self);
 
-    if (gt_irc_is_connected(priv->chat)
-        && STRING_EQUALS(chan, priv->cur_chan)) return;
+    if (gt_irc_get_state(priv->irc) == GT_IRC_STATE_DISCONNECTED)
+    {
+        gt_irc_connect_and_join_channel_async(priv->irc, priv->chan,
+            priv->irc_cancel, NULL, NULL);
 
-    priv->joined_channel = TRUE;
+        g_signal_handler_disconnect(priv->irc, priv->irc_disconnected_source);
+        priv->irc_disconnected_source = 0;
+    }
+}
+
+GtChat*
+gt_chat_new()
+{
+    return g_object_new(GT_TYPE_CHAT, NULL);
+}
+
+void
+gt_chat_connect(GtChat* self, GtChannel* chan)
+{
+    g_assert(GT_IS_CHAT(self));
+    g_assert(GT_IS_CHANNEL(chan));
+
+    INFO("Connecting to channel %s", gt_channel_get_name(chan));
+
+    GtChatPrivate* priv = gt_chat_get_instance_private(self);
+
     priv->chat_sticky = TRUE;
 
-    g_clear_pointer(&priv->cur_chan, (GDestroyNotify) g_free);
-    priv->cur_chan = g_strdup(chan);
+    priv->chan = g_object_ref(chan);
 
-    if (priv->chat_badges_cancel)
-         g_cancellable_cancel(priv->chat_badges_cancel);
-    g_clear_object(&priv->chat_badges_cancel);
-    priv->chat_badges_cancel = g_cancellable_new();
+    GtIrcState state = gt_irc_get_state(priv->irc);
 
-    gt_twitch_chat_badges_async(main_app->twitch, chan,
-                                priv->chat_badges_cancel,
-                                (GAsyncReadyCallback) chat_badges_cb, self);
+    utils_refresh_cancellable(&priv->irc_cancel);
+
+    if (state >= GT_IRC_STATE_CONNECTING)
+    {
+        if (priv->irc_disconnected_source > 0)
+            g_signal_handler_disconnect(priv->irc, priv->irc_disconnected_source);
+
+        priv->irc_disconnected_source = g_signal_connect(priv->irc, "notify::state",
+            G_CALLBACK(disconnected_cb), self);
+    }
+    else
+    {
+        gt_irc_connect_and_join_channel_async(priv->irc, priv->chan,
+            priv->irc_cancel, NULL, NULL);
+    }
 }
 
 void
 gt_chat_disconnect(GtChat* self)
 {
+    INFO("Disconnecting");
+
     GtChatPrivate* priv = gt_chat_get_instance_private(self);
 
-    priv->joined_channel = FALSE;
+    GtIrcState state = gt_irc_get_state(priv->irc);
 
-    if (gt_irc_is_connected(priv->chat))
-        gt_irc_disconnect(priv->chat);
+    if (priv->irc_disconnected_source > 0)
+    {
+        g_signal_handler_disconnect(priv->irc, priv->irc_disconnected_source);
+        priv->irc_disconnected_source = 0;
+    }
+
+    if (state < GT_IRC_STATE_CONNECTING)
+    {
+        g_assert_null(priv->chan);
+
+        return;
+    }
+    else if (state == GT_IRC_STATE_CONNECTING)
+        g_cancellable_cancel(priv->irc_cancel);
+    else if (state > GT_IRC_STATE_CONNECTING)
+        gt_irc_disconnect(priv->irc);
+
+    g_clear_object(&priv->chan);
 
     gtk_text_buffer_set_text(priv->chat_buffer, "", -1);
 }

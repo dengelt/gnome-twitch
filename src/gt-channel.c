@@ -1,52 +1,64 @@
+/*
+ *  This file is part of GNOME Twitch - 'Enjoy Twitch on your GNU/Linux desktop'
+ *  Copyright © 2017 Vincent Szolnoky <vinszent@vinszent.com>
+ *
+ *  GNOME Twitch is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  GNOME Twitch is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with GNOME Twitch. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include "gt-channel.h"
 #include "gt-app.h"
+#include "gt-win.h"
+#include "gt-resource-downloader.h"
 #include <json-glib/json-glib.h>
+#include <glib/gi18n.h>
 
 #define TAG "GtChannel"
+#include "gnome-twitch/gt-log.h"
 #include "utils.h"
 
 #define N_JSON_PROPS 2
 
 typedef struct
 {
-    gint64 id;
-
-    gchar* status;
-    gchar* game;
-    gchar* name;
-    gchar* display_name;
-    gchar* preview_url;
-    gchar* video_banner_url;
+    GtChannelData* data;
 
     GdkPixbuf* preview;
 
-    gint64 viewers;
-    GDateTime* stream_started_time;
-
     gboolean followed;
-    gboolean online;
+
     gboolean auto_update;
     gboolean updating;
 
-    gchar* cache_filename;
-    gint64 cache_timestamp;
-    gint64 preview_timestamp;
+    gboolean error;
+    gchar* error_message;
+    gchar* error_details;
 
     guint update_id;
+    guint update_set_id;
+    guint notify_source_id;
 
     GCancellable* cancel;
-    GCancellable* cache_cancel;
 } GtChannelPrivate;
 
+static GtResourceDownloader* preview_downloader;
+static GtResourceDownloader* banner_downloader;
+
+/* TODO: Remove the use of this, just let GLib do all the rate limiting */
 static GThreadPool* update_pool;
-static GThreadPool* cache_update_pool;
 
-static void
-json_serializable_iface_init(JsonSerializableIface* iface);
-
-G_DEFINE_TYPE_WITH_CODE(GtChannel, gt_channel, G_TYPE_OBJECT,
-                        G_ADD_PRIVATE(GtChannel)
-                        G_IMPLEMENT_INTERFACE(JSON_TYPE_SERIALIZABLE, json_serializable_iface_init))
+G_DEFINE_TYPE_WITH_CODE(GtChannel, gt_channel, G_TYPE_INITIALLY_UNOWNED,
+    G_ADD_PRIVATE(GtChannel))
 
 enum
 {
@@ -58,6 +70,8 @@ enum
     PROP_DISPLAY_NAME,
     PROP_PREVIEW_URL,
     PROP_VIDEO_BANNER_URL,
+    PROP_LOGO_URL,
+    PROP_PROFILE_URL,
     PROP_PREVIEW,
     PROP_VIEWERS,
     PROP_STREAM_STARTED_TIME,
@@ -65,43 +79,20 @@ enum
     PROP_ONLINE,
     PROP_AUTO_UPDATE,
     PROP_UPDATING,
+    PROP_ERROR,
     NUM_PROPS
 };
 
 static GParamSpec* props[NUM_PROPS];
 
-GtChannel*
-gt_channel_new(const gchar* name, gint64 id)
-{
-    return g_object_new(GT_TYPE_CHANNEL,
-                        "name", name,
-                        "id", id,
-                        NULL);
-}
-
-static inline void
-set_banner(GtChannel* self, GdkPixbuf* banner, gboolean save)
-{
-    GtChannelPrivate* priv = gt_channel_get_instance_private(self);
-
-    priv->preview = banner;
-
-    if (save)
-        gdk_pixbuf_save(priv->preview, priv->cache_filename,
-                        "jpeg", NULL, NULL);
-
-    utils_pixbuf_scale_simple(&priv->preview,
-                              320, 180,
-                              GDK_INTERP_BILINEAR);
-
-    g_object_notify_by_pspec(G_OBJECT(self), props[PROP_PREVIEW]);
-}
-
 static void
 channel_followed_cb(GtFollowsManager* mgr,
-                      GtChannel* chan,
-                      gpointer udata)
+    GtChannel* chan, gpointer udata)
 {
+    RETURN_IF_FAIL(GT_IS_FOLLOWS_MANAGER(mgr));
+    RETURN_IF_FAIL(GT_IS_CHANNEL(chan));
+    RETURN_IF_FAIL(GT_IS_CHANNEL(udata));
+
     GtChannel* self = GT_CHANNEL(udata);
     GtChannelPrivate* priv = gt_channel_get_instance_private(self);
 
@@ -116,9 +107,12 @@ channel_followed_cb(GtFollowsManager* mgr,
 
 static void
 channel_unfollowed_cb(GtFollowsManager* mgr,
-                        GtChannel* chan,
-                        gpointer udata)
+    GtChannel* chan, gpointer udata)
 {
+    RETURN_IF_FAIL(GT_IS_FOLLOWS_MANAGER(mgr));
+    RETURN_IF_FAIL(GT_IS_CHANNEL(chan));
+    RETURN_IF_FAIL(GT_IS_CHANNEL(udata));
+
     GtChannel* self = GT_CHANNEL(udata);
     GtChannelPrivate* priv = gt_channel_get_instance_private(self);
 
@@ -132,196 +126,287 @@ channel_unfollowed_cb(GtFollowsManager* mgr,
 }
 
 static gboolean
-update_set_cb(gpointer udata)
+auto_update_cb(gpointer udata)
 {
-    GtChannel* self = GT_CHANNEL(udata);
-    GtChannelRawData* raw = g_object_get_data(G_OBJECT(self), "raw-data");
+    RETURN_VAL_IF_FAIL(udata != NULL, G_SOURCE_REMOVE);
 
-    g_info("{GtChannel} Finished update '%s'", raw->name);
+    g_autoptr(GtChannel) self = g_weak_ref_get(udata);
 
-    gt_channel_update_from_raw_data(self, raw);
+    if (!self)
+    {
+        DEBUG("Not auto-updating because we were unreffed while wating");
 
-    gt_twitch_channel_raw_data_free(raw);
-    g_object_set_data(G_OBJECT(self), "raw-data", NULL);
+        return G_SOURCE_REMOVE;
+    }
 
-    return FALSE;
+    gt_channel_update(self);
+
+    return G_SOURCE_CONTINUE;
 }
 
+/* TODO: Move this into set_property */
 static void
-update_cb(gpointer data,
-          gpointer udata)
+auto_update_set_cb(GObject* src,
+    GParamSpec* pspec, gpointer udata)
 {
-    if(!GT_IS_CHANNEL(data)) // We were probably unrefed during wait time.
-        return;
+    RETURN_IF_FAIL(GT_IS_CHANNEL(src));
 
-    GtChannel* self = GT_CHANNEL(data);
-    GtChannelPrivate* priv = gt_channel_get_instance_private(self);
-
-    GtChannelRawData* raw = gt_twitch_channel_with_stream_raw_data(main_app->twitch, priv->name);
-
-    if (!raw)
-        return; //Most likely error getting data
-
-    g_object_set_data(G_OBJECT(self), "raw-data", raw);
-
-    g_idle_add((GSourceFunc) update_set_cb, self); //Needs to be run on main thread.
-}
-
-static void
-auto_update_cb(GObject* src,
-               GParamSpec* pspec,
-               gpointer udata)
-{
     GtChannel* self = GT_CHANNEL(src);
     GtChannelPrivate* priv = gt_channel_get_instance_private(self);
 
     if (priv->auto_update)
-        priv->update_id = g_timeout_add_seconds(120, (GSourceFunc) gt_channel_update, self); //TODO: Add this as a setting
+    {
+        priv->update_id = g_timeout_add_seconds_full(G_PRIORITY_DEFAULT, 120, /* TODO: Add the timeout as a setting */
+            auto_update_cb, utils_create_weak_ref(self), (GDestroyNotify) utils_free_weak_ref);
+    }
     else
         g_source_remove(priv->update_id);
 }
 
-static void
-cache_update_cb(gpointer data,
-                gpointer udata)
+static gboolean
+notify_preview_cb(gpointer udata)
 {
-    GCancellable* cancel = G_CANCELLABLE(data);
+    RETURN_VAL_IF_FAIL(GT_IS_CHANNEL(udata), G_SOURCE_REMOVE);
 
-    if (g_cancellable_is_cancelled(cancel))
-    {
-        g_debug("{GtChannel} Unrefed while waiting to update cache");
-        g_clear_object(&cancel);
-        return;
-    }
-
-    GtChannel* self = GT_CHANNEL(g_object_get_data(G_OBJECT(cancel), "chan"));
-    GtChannelPrivate* priv = gt_channel_get_instance_private(self);
-
-    GdkPixbuf* pic = gt_twitch_download_picture(main_app->twitch, priv->video_banner_url,
-                                                priv->cache_timestamp);
-    if (pic)
-    {
-        set_banner(self, pic, TRUE);
-        g_info("{GtChannel} Updated cache entry for channel '%s'", priv->name);
-    }
-
-    g_clear_object(&cancel);
-}
-
-static void
-download_preview_cb(GObject* source,
-                    GAsyncResult* res,
-                    gpointer udata)
-{
-    GError* error = NULL;
-
-    GdkPixbuf* pic = g_task_propagate_pointer(G_TASK(res), &error);
-
-    if (error)
-    {
-        g_error_free(error);
-        return;
-    }
     GtChannel* self = GT_CHANNEL(udata);
     GtChannelPrivate* priv = gt_channel_get_instance_private(self);
 
-    if (pic)
-    {
-        g_clear_object(&priv->preview);
-        priv->preview_timestamp = utils_timestamp_now();
-        priv->preview = pic;
-        utils_pixbuf_scale_simple(&priv->preview,
-                                  320, 180,
-                                  GDK_INTERP_BILINEAR);
-        g_object_notify_by_pspec(G_OBJECT(self), props[PROP_PREVIEW]);
-    }
+    g_object_notify_by_pspec(G_OBJECT(self), props[PROP_PREVIEW]);
 
     priv->updating = FALSE;
     g_object_notify_by_pspec(G_OBJECT(self), props[PROP_UPDATING]);
+
+    if (priv->error)
+        g_object_notify_by_pspec(G_OBJECT(self), props[PROP_ERROR]);
+
+    priv->notify_source_id = 0;
+
+    return G_SOURCE_REMOVE;
 }
 
 static void
-download_banner_cb(GObject* source,
-                   GAsyncResult* res,
-                   gpointer udata)
+download_image_cb(GdkPixbuf* pixbuf, gpointer udata, GError* error)
 {
-    GError* error = NULL;
+    RETURN_IF_FAIL(GT_IS_CHANNEL(udata));
 
-    GdkPixbuf* pic = g_task_propagate_pointer(G_TASK(res), &error);
+    g_autoptr(GtChannel) self = GT_CHANNEL(udata);
+    GtChannelPrivate* priv = gt_channel_get_instance_private(self);
 
     if (error)
     {
+        priv->error = TRUE;
+        priv->error_message = g_strdup_printf("Unable to update preview image");
+        priv->error_details = g_strdup_printf("Unable to update preview image because: %s", error->message);
+
         g_error_free(error);
-        return;
-    }
-    GtChannel* self = GT_CHANNEL(udata);
-    GtChannelPrivate* priv = gt_channel_get_instance_private(self);
-
-    set_banner(self, pic, TRUE);
-
-    priv->updating = FALSE;
-    g_object_notify_by_pspec(G_OBJECT(self), props[PROP_UPDATING]);
-}
-
-static void
-download_banner(GtChannel* self)
-{
-    GtChannelPrivate* priv = gt_channel_get_instance_private(self);
-
-    if (priv->video_banner_url)
-    {
-        GdkPixbuf* banner = NULL;
-
-        if (!g_file_test(priv->cache_filename, G_FILE_TEST_EXISTS))
-            g_info("{GtChannel} Cache miss for channel '%s'", priv->name);
-        else
-        {
-            g_info("{GtChannel} Cache hit for channel '%s'", priv->name);
-            banner = gdk_pixbuf_new_from_file(priv->cache_filename, NULL);
-            priv->cache_timestamp = utils_timestamp_file(priv->cache_filename);
-        }
-
-        if (!banner)
-            gt_twitch_download_picture_async(main_app->twitch, priv->video_banner_url, 0, priv->cancel,
-                                             download_banner_cb, self);
-        else
-        {
-            g_clear_object(&priv->cache_cancel);
-            priv->cache_cancel = g_cancellable_new();
-            g_object_ref(G_OBJECT(priv->cache_cancel));
-            g_object_set_data(G_OBJECT(priv->cache_cancel), "chan", self);
-            g_thread_pool_push(cache_update_pool, priv->cache_cancel, NULL);
-
-            set_banner(self, banner, FALSE);
-
-            priv->updating = FALSE;
-            g_object_notify_by_pspec(G_OBJECT(self), props[PROP_UPDATING]);
-        }
     }
     else
     {
-        set_banner(self, gdk_pixbuf_new_from_resource("/com/vinszent/GnomeTwitch/icons/offline.png", NULL),
-                   FALSE);
+        priv->preview = pixbuf;
 
-        priv->updating = FALSE;
-        g_object_notify_by_pspec(G_OBJECT(self), props[PROP_UPDATING]);
+        utils_pixbuf_scale_simple(&priv->preview, 320, 180, GDK_INTERP_BILINEAR);
+    }
+
+    if (priv->notify_source_id == 0)
+    {
+        priv->notify_source_id = g_idle_add_full(G_PRIORITY_LOW,
+            notify_preview_cb, g_object_ref(self), g_object_unref);
     }
 }
 
 static void
 update_preview(GtChannel* self)
 {
+    RETURN_IF_FAIL(GT_IS_CHANNEL(self));
+
+    GtChannelPrivate* priv = gt_channel_get_instance_private(self);
+    g_autoptr(GError) err = NULL;
+
+    if (priv->data->online)
+    {
+        priv->preview = gt_resource_downloader_download_image_immediately(preview_downloader,
+            priv->data->preview_url, priv->data->id, download_image_cb, g_object_ref(self), &err);
+    }
+    else if (!utils_str_empty(priv->data->video_banner_url))
+    {
+        priv->preview = gt_resource_downloader_download_image_immediately(preview_downloader,
+            priv->data->video_banner_url, priv->data->id, download_image_cb, g_object_ref(self), &err);
+    }
+    else
+    {
+        priv->preview = gdk_pixbuf_new_from_resource(
+            "/com/vinszent/GnomeTwitch/icons/offline.png", &err);
+    }
+
+    if (err)
+    {
+        WARNING("Unable to update preview image fror channel '%s' because: %s",
+            priv->data->name, err->message);
+
+        priv->error_message = g_strdup("Unable to preview image");
+        priv->error_details = g_strdup_printf("Unable to update preview image"
+            " for channel '%s' because: %s", priv->data->name, err->message);
+
+        priv->error = TRUE;
+    }
+    else if (priv->preview)
+    {
+        /* FIXME: Do something about this because it can cause the UI to temporarily freeze */
+        utils_pixbuf_scale_simple(&priv->preview, 320, 180, GDK_INTERP_BILINEAR);
+
+        notify_preview_cb(self);
+    }
+}
+
+static void
+update_from_data(GtChannel* self, GtChannelData* data)
+{
+    RETURN_IF_FAIL(GT_IS_CHANNEL(self));
+    RETURN_IF_FAIL(data != NULL);
+
+    GtChannelPrivate* priv = gt_channel_get_instance_private(self);
+
+    g_autoptr(GtChannelData) old_data = priv->data;
+
+    priv->updating = TRUE;
+    g_object_notify_by_pspec(G_OBJECT(self), props[PROP_UPDATING]);
+
+    priv->data = data;
+
+    if (old_data)
+    {
+        if (!STRING_EQUALS(old_data->id, data->id))
+        {
+            WARNING("Unable to update channel with id '%s' and name '%s' because: "
+                "New data with id '%s' does not match the current one",
+                old_data->id, old_data->name, data->id);
+
+            priv->error_message = g_strdup("Unable to update data");
+            priv->error_details = g_strdup_printf("Unable to update data for channel with id '%s' and name '%s' because: "
+                "New data with id '%s' does not match the current one",
+                old_data->id, old_data->name, data->id);
+
+            priv->error = TRUE;
+            g_object_notify_by_pspec(G_OBJECT(self), props[PROP_ERROR]);
+
+            return;
+        }
+
+        if (!STRING_EQUALS(old_data->name, data->name))
+        {
+            WARNING("Unable to update channel with id '%s' and name '%s' because: "
+                "New data with name '%s' does not match the current one",
+                old_data->id, old_data->name, data->name);
+
+            priv->error_message = g_strdup("Unable to update data");
+            priv->error_details = g_strdup_printf("Unable to update data for channel with id '%s' and name '%s' because: "
+                "New data with name '%s' does not match the current one",
+                old_data->id, old_data->name, data->name);
+
+            priv->error = TRUE;
+            g_object_notify_by_pspec(G_OBJECT(self), props[PROP_ERROR]);
+
+            return;
+        }
+
+        if (!STRING_EQUALS(old_data->game, data->game))
+            g_object_notify_by_pspec(G_OBJECT(self), props[PROP_GAME]);
+        if (!STRING_EQUALS(old_data->status, data->status))
+            g_object_notify_by_pspec(G_OBJECT(self), props[PROP_STATUS]);
+        if (!STRING_EQUALS(old_data->display_name, data->display_name))
+            g_object_notify_by_pspec(G_OBJECT(self), props[PROP_DISPLAY_NAME]);
+        if (!STRING_EQUALS(old_data->preview_url, data->preview_url))
+            g_object_notify_by_pspec(G_OBJECT(self), props[PROP_PREVIEW_URL]);
+        if (!STRING_EQUALS(old_data->video_banner_url, data->video_banner_url))
+            g_object_notify_by_pspec(G_OBJECT(self), props[PROP_VIDEO_BANNER_URL]);
+        if (!STRING_EQUALS(old_data->logo_url, data->logo_url))
+            g_object_notify_by_pspec(G_OBJECT(self), props[PROP_LOGO_URL]);
+        if (!STRING_EQUALS(old_data->profile_url, data->profile_url))
+            g_object_notify_by_pspec(G_OBJECT(self), props[PROP_PROFILE_URL]);
+        if (old_data->online != data->online)
+            g_object_notify_by_pspec(G_OBJECT(self), props[PROP_ONLINE]);
+        if (old_data->viewers != data->viewers)
+            g_object_notify_by_pspec(G_OBJECT(self), props[PROP_VIEWERS]);
+        if (data->stream_started_time && old_data->stream_started_time &&
+            g_date_time_compare(old_data->stream_started_time, data->stream_started_time) != 0)
+            g_object_notify_by_pspec(G_OBJECT(self), props[PROP_STREAM_STARTED_TIME]);
+    }
+
+    update_preview(self);
+}
+
+
+static gboolean
+update_set_cb(gpointer udata)
+{
+    RETURN_VAL_IF_FAIL(GT_IS_CHANNEL(udata), G_SOURCE_REMOVE);
+
+    GtChannel* self = GT_CHANNEL(udata);
+    GtChannelPrivate* priv = gt_channel_get_instance_private(self);
+    GtChannelData* data = g_object_get_data(G_OBJECT(self), "data");
+
+    if (!data)
+    {
+        WARNING("Unable update from data");
+    }
+    else
+    {
+        update_from_data(self, data);
+
+        g_object_set_data(G_OBJECT(self), "data", NULL);
+    }
+
+    priv->update_set_id = 0;
+
+    return G_SOURCE_REMOVE;
+}
+
+static void
+update_cb(gpointer data,
+    gpointer udata)
+{
+    RETURN_IF_FAIL(GT_IS_CHANNEL(data));
+
+    g_autoptr(GtChannel) self = data;
+    GtChannelPrivate* priv = gt_channel_get_instance_private(self);
+    g_autoptr(GError) err = NULL;
+
+    GtChannelData* chan_data = gt_twitch_fetch_channel_data(
+        main_app->twitch, priv->data->id, &err);
+
+    if (err)
+    {
+        WARNING("Unable to fetch channel data because: %s", err->message);
+
+        priv->error_message = g_strdup("Unable to fetch data");
+        priv->error_details = g_strdup_printf(
+            "Unable to fetch data for channel name '%s' because: %s",
+            priv->data->name, err->message);
+
+        priv->error = TRUE;
+        g_object_notify_by_pspec(G_OBJECT(self), props[PROP_ERROR]);
+
+        return;
+    }
+
+    g_object_set_data(G_OBJECT(self), "data", chan_data);
+
+    priv->update_set_id = g_idle_add_full(G_PRIORITY_LOW,
+        update_set_cb, g_object_ref(self), g_object_unref);
+}
+
+static void
+dispose(GObject* object)
+{
+    GtChannel* self = GT_CHANNEL(object);
     GtChannelPrivate* priv = gt_channel_get_instance_private(self);
 
     g_cancellable_cancel(priv->cancel);
-    g_clear_object(&priv->cancel);
-    priv->cancel = g_cancellable_new();
 
-    if (priv->online)
-        gt_twitch_download_picture_async(main_app->twitch, priv->preview_url, priv->preview_timestamp,
-                                         priv->cancel, download_preview_cb, self);
-    else
-        download_banner(self);
+    g_clear_object(&priv->cancel);
+    g_clear_object(&priv->preview);
+
+    G_OBJECT_CLASS(gt_channel_parent_class)->dispose(object);
 }
 
 static void
@@ -330,26 +415,13 @@ finalize(GObject* object)
     GtChannel* self = (GtChannel*) object;
     GtChannelPrivate* priv = gt_channel_get_instance_private(self);
 
-    g_cancellable_cancel(priv->cancel);
-    g_cancellable_cancel(priv->cache_cancel);
-
-    g_free(priv->name);
-    g_free(priv->display_name);
-    g_free(priv->game);
-    g_free(priv->status);
-    g_free(priv->cache_filename);
-    g_free(priv->preview_url);
-    g_free(priv->video_banner_url);
-
-    if (priv->stream_started_time)
-        g_date_time_unref(priv->stream_started_time);
-
-    g_clear_object(&priv->preview);
-    g_clear_object(&priv->cancel);
-    g_clear_object(&priv->cache_cancel);
+    gt_channel_data_free(priv->data);
 
     if (priv->update_id > 0)
         g_source_remove(priv->update_id);
+
+    if (priv->notify_source_id > 0)
+        g_source_remove(priv->notify_source_id);
 
     g_signal_handlers_disconnect_by_func(main_app->fav_mgr, channel_followed_cb, self);
     g_signal_handlers_disconnect_by_func(main_app->fav_mgr, channel_unfollowed_cb, self);
@@ -369,46 +441,57 @@ get_property (GObject*    obj,
     switch (prop)
     {
         case PROP_ID:
-            g_value_set_int64(val, priv->id);
+            g_value_set_string(val, priv->data->id);
             break;
         case PROP_STATUS:
-            g_value_set_string(val, priv->status);
+            g_value_set_string(val, priv->data->status);
             break;
         case PROP_NAME:
-            g_value_set_string(val, priv->name);
+            g_value_set_string(val, priv->data->name);
             break;
         case PROP_DISPLAY_NAME:
-            g_value_set_string(val, priv->display_name);
+            g_value_set_string(val, priv->data->display_name);
             break;
         case PROP_GAME:
-            g_value_set_string(val, priv->game);
+            g_value_set_string(val, priv->data->game);
             break;
         case PROP_PREVIEW_URL:
-            g_value_set_string(val, priv->preview_url);
+            g_value_set_string(val, priv->data->preview_url);
             break;
         case PROP_VIDEO_BANNER_URL:
-            g_value_set_string(val, priv->video_banner_url);
+            g_value_set_string(val, priv->data->video_banner_url);
             break;
-        case PROP_PREVIEW:
-            g_value_set_object(val, priv->preview);
+        case PROP_LOGO_URL:
+            g_value_set_string(val, priv->data->logo_url);
+            break;
+        case PROP_PROFILE_URL:
+            g_value_set_string(val, priv->data->profile_url);
             break;
         case PROP_VIEWERS:
-            g_value_set_int64(val, priv->viewers);
+            g_value_set_int64(val, priv->data->viewers);
             break;
         case PROP_STREAM_STARTED_TIME:
-            g_value_set_pointer(val, priv->stream_started_time);
+            g_value_set_pointer(val,
+                priv->data->stream_started_time ?
+                g_date_time_ref(priv->data->stream_started_time) : NULL);
+            break;
+        case PROP_ONLINE:
+            g_value_set_boolean(val, priv->data->online);
             break;
         case PROP_FOLLOWED:
             g_value_set_boolean(val, priv->followed);
-            break;
-        case PROP_ONLINE:
-            g_value_set_boolean(val, priv->online);
             break;
         case PROP_AUTO_UPDATE:
             g_value_set_boolean(val, priv->auto_update);
             break;
         case PROP_UPDATING:
             g_value_set_boolean(val, priv->updating);
+            break;
+        case PROP_PREVIEW:
+            g_value_set_object(val, priv->preview);
+            break;
+        case PROP_ERROR:
+            g_value_set_boolean(val, priv->error);
             break;
         default:
             G_OBJECT_WARN_INVALID_PROPERTY_ID(obj, prop, pspec);
@@ -426,48 +509,8 @@ set_property(GObject*      obj,
 
     switch (prop)
     {
-        case PROP_ID:
-            priv->id = g_value_get_int64(val);
-            break;
-        case PROP_STATUS:
-            g_free(priv->status);
-            priv->status = g_value_dup_string(val);
-            break;
-        case PROP_NAME:
-            g_free(priv->name);
-            priv->name = g_value_dup_string(val);
-            break;
-        case PROP_DISPLAY_NAME:
-            g_free(priv->display_name);
-            priv->display_name = g_value_dup_string(val);
-            break;
-        case PROP_GAME:
-            g_free(priv->game);
-            priv->game = utils_value_dup_string_allow_null(val);
-            break;
-        case PROP_PREVIEW_URL:
-            g_free(priv->preview_url);
-            priv->preview_url = g_value_dup_string(val);
-            break;
-        case PROP_VIDEO_BANNER_URL:
-            g_free(priv->video_banner_url);
-            priv->video_banner_url = g_value_dup_string(val);
-            break;
-        case PROP_VIEWERS:
-            priv->viewers = g_value_get_int64(val);
-            break;
-        case PROP_STREAM_STARTED_TIME:
-            if (priv->stream_started_time)
-                g_date_time_unref(priv->stream_started_time);
-            priv->stream_started_time = g_value_get_pointer(val);
-            if (priv->stream_started_time)
-                g_date_time_ref(priv->stream_started_time);
-            break;
         case PROP_FOLLOWED:
             priv->followed = g_value_get_boolean(val);
-            break;
-        case PROP_ONLINE:
-            priv->online = g_value_get_boolean(val);
             break;
         case PROP_AUTO_UPDATE:
             priv->auto_update = g_value_get_boolean(val);
@@ -478,215 +521,173 @@ set_property(GObject*      obj,
 }
 
 static void
-constructed(GObject* obj)
-{
-    GtChannel* self = GT_CHANNEL(obj);
-    GtChannelPrivate* priv = gt_channel_get_instance_private(self);
-
-    gchar* id;
-    id = g_strdup_printf("%ld", priv->id);
-    priv->cache_filename = g_build_filename(g_get_user_cache_dir(), "gnome-twitch", "channels", id, NULL);
-    g_free(id);
-
-    priv->followed = gt_follows_manager_is_channel_followed(main_app->fav_mgr, self);
-
-    G_OBJECT_CLASS(gt_channel_parent_class)->constructed(obj);
-}
-
-static void
 gt_channel_class_init(GtChannelClass* klass)
 {
     GObjectClass* object_class = G_OBJECT_CLASS(klass);
 
-    object_class->constructed = constructed;
     object_class->finalize = finalize;
+    object_class->dispose = dispose;
     object_class->get_property = get_property;
     object_class->set_property = set_property;
 
-    props[PROP_ID] = g_param_spec_int64("id",
-                                        "ID",
-                                        "ID of channel",
-                                        0,
-                                        G_MAXINT64,
-                                        0,
-                                        G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY);
+    props[PROP_ID] = g_param_spec_string("id", "ID", "ID of channel",
+        NULL, G_PARAM_READABLE);
 
-    props[PROP_NAME] = g_param_spec_string("name",
-                                           "Name",
-                                           "Name of channel",
-                                           NULL,
-                                           G_PARAM_READWRITE | G_PARAM_CONSTRUCT);
-    props[PROP_STATUS] = g_param_spec_string("status",
-                                             "Status",
-                                             "Status of channel",
-                                             NULL,
-                                             G_PARAM_READWRITE | G_PARAM_CONSTRUCT);
-    props[PROP_DISPLAY_NAME] = g_param_spec_string("display-name",
-                                                   "Display Name",
-                                                   "Display Name of channel",
-                                                   NULL,
-                                                   G_PARAM_READWRITE | G_PARAM_CONSTRUCT);
-    props[PROP_GAME] = g_param_spec_string("game",
-                                           "Game",
-                                           "Game being played by channel",
-                                           NULL,
-                                           G_PARAM_READWRITE | G_PARAM_CONSTRUCT);
-    props[PROP_PREVIEW_URL] = g_param_spec_string("preview-url",
-                                                  "Preview Url",
-                                                  "Url for preview image",
-                                                  NULL,
-                                                  G_PARAM_READWRITE);
-    props[PROP_VIDEO_BANNER_URL] = g_param_spec_string("video-banner-url",
-                                                       "Video Banner Url",
-                                                       "Url for video banner image",
-                                                       NULL,
-                                                       G_PARAM_READWRITE);
-    props[PROP_PREVIEW] = g_param_spec_object("preview",
-                                              "Preview",
-                                              "Preview of channel",
-                                              GDK_TYPE_PIXBUF,
-                                              G_PARAM_READABLE);
-    props[PROP_VIEWERS] = g_param_spec_int64("viewers",
-                                             "Viewers",
-                                             "Number of viewers",
-                                             0, G_MAXINT64, 0,
-                                             G_PARAM_READWRITE);
-    props[PROP_STREAM_STARTED_TIME] = g_param_spec_pointer("stream-started-time",
-                                                           "Stream started time",
-                                                           "Stream started time",
-                                                           G_PARAM_READWRITE);
-    props[PROP_FOLLOWED] = g_param_spec_boolean("followed",
-                                                  "Followed",
-                                                  "Whether the channel is followed",
-                                                  FALSE,
-                                                  G_PARAM_READWRITE);
-    props[PROP_ONLINE] = g_param_spec_boolean("online",
-                                              "Online",
-                                              "Whether the channel is online",
-                                              TRUE,
-                                              G_PARAM_READWRITE | G_PARAM_CONSTRUCT);
-    props[PROP_AUTO_UPDATE] = g_param_spec_boolean("auto-update",
-                                                   "Auto Update",
-                                                   "Whether it should update itself automatically",
-                                                   FALSE,
-                                                   G_PARAM_READWRITE);
-    props[PROP_UPDATING] = g_param_spec_boolean("updating",
-                                                "Updating",
-                                                "Whether updating",
-                                                FALSE,
-                                                G_PARAM_READABLE);
+    props[PROP_NAME] = g_param_spec_string("name", "Name", "Name of channel",
+        NULL, G_PARAM_READABLE);
 
-    g_object_class_install_properties(object_class,
-                                      NUM_PROPS,
-                                      props);
+    props[PROP_STATUS] = g_param_spec_string("status", "Status", "Status of channel",
+        NULL, G_PARAM_READABLE);
+
+    props[PROP_DISPLAY_NAME] = g_param_spec_string("display-name", "Display Name", "Display Name of channel",
+        NULL, G_PARAM_READABLE);
+
+    props[PROP_GAME] = g_param_spec_string("game", "Game", "Game being played by channel",
+        NULL, G_PARAM_READABLE);
+
+    props[PROP_PREVIEW_URL] = g_param_spec_string("preview-url", "Preview Url", "Url for preview image",
+        NULL, G_PARAM_READABLE);
+
+    props[PROP_VIDEO_BANNER_URL] = g_param_spec_string("video-banner-url", "Video Banner Url", "Url for video banner image",
+        NULL, G_PARAM_READABLE);
+
+    props[PROP_LOGO_URL] = g_param_spec_string("logo-url", "Logo Url", "Url for logo",
+        NULL, G_PARAM_READABLE);
+
+    props[PROP_PROFILE_URL] = g_param_spec_string("profile-url", "Profile Url", "Url for profile",
+        NULL, G_PARAM_READABLE);
+
+    props[PROP_VIEWERS] = g_param_spec_int64("viewers", "Viewers", "Number of viewers",
+        0, G_MAXINT64, 0, G_PARAM_READABLE);
+
+    props[PROP_PREVIEW] = g_param_spec_object("preview", "Preview", "Preview of channel",
+        GDK_TYPE_PIXBUF, G_PARAM_READABLE);
+
+    //TODO: Spec this as a boxed type instead
+    props[PROP_STREAM_STARTED_TIME] = g_param_spec_pointer("stream-started-time", "Stream started time", "Stream started time",
+        G_PARAM_READABLE);
+
+    props[PROP_ONLINE] = g_param_spec_boolean("online", "Online", "Whether the channel is online",
+        TRUE, G_PARAM_READABLE);
+
+    props[PROP_UPDATING] = g_param_spec_boolean("updating", "Updating", "Whether updating",
+        FALSE, G_PARAM_READABLE);
+
+    props[PROP_FOLLOWED] = g_param_spec_boolean("followed", "Followed", "Whether the channel is followed",
+        FALSE, G_PARAM_READWRITE);
+
+    props[PROP_AUTO_UPDATE] = g_param_spec_boolean("auto-update", "Auto Update", "Whether it should update itself automatically",
+        FALSE, G_PARAM_READWRITE);
+
+    props[PROP_ERROR] = g_param_spec_boolean("error", "Error", "Whether in error state",
+        FALSE, G_PARAM_READABLE);
+
+    g_object_class_install_properties(object_class, NUM_PROPS, props);
+
+    g_autofree gchar* filepath = g_build_filename(g_get_user_cache_dir(), "gnome-twitch", "channels", NULL);
+
+    banner_downloader = gt_resource_downloader_new_with_cache(filepath);
+    gt_resource_downloader_set_image_filetype(banner_downloader, GT_IMAGE_FILETYPE_JPEG);
+
+    /* NOTE: Don't cache previews as they're updated often */
+    preview_downloader = gt_resource_downloader_new();
+
+    g_signal_connect_swapped(main_app, "shutdown", G_CALLBACK(g_object_unref), preview_downloader);
+    g_signal_connect_swapped(main_app, "shutdown", G_CALLBACK(g_object_unref), banner_downloader);
 
     update_pool = g_thread_pool_new((GFunc) update_cb, NULL, 2, FALSE, NULL);
-    cache_update_pool = g_thread_pool_new((GFunc) cache_update_cb, NULL, 1, FALSE, NULL);
 }
 
 
 static void
 gt_channel_init(GtChannel* self)
 {
+    g_assert(GT_IS_CHANNEL(self));
+
     GtChannelPrivate* priv = gt_channel_get_instance_private(self);
 
+    priv->data = NULL;
     priv->updating = FALSE;
     priv->cancel = g_cancellable_new();
 
-    priv->stream_started_time = NULL;
-    priv->viewers = 0;
+    priv->update_id = 0;
+    priv->update_set_id = 0;
 
-    g_signal_connect(self, "notify::auto-update", G_CALLBACK(auto_update_cb), NULL);
+    priv->error_message = NULL;
+    priv->error_details = NULL;
+
+    g_signal_connect(self, "notify::auto-update", G_CALLBACK(auto_update_set_cb), NULL);
     g_signal_connect(main_app->fav_mgr, "channel-followed", G_CALLBACK(channel_followed_cb), self);
     g_signal_connect(main_app->fav_mgr, "channel-unfollowed", G_CALLBACK(channel_unfollowed_cb), self);
 
     gt_follows_manager_attach_to_channel(main_app->fav_mgr, self);
 }
 
-static GParamSpec**
-json_list_props(JsonSerializable* json,
-                guint* n_pspecs)
+GtChannel*
+gt_channel_new(GtChannelData* data)
 {
-    GParamSpec** json_props = g_malloc_n(N_JSON_PROPS, sizeof(GParamSpec*));
+    RETURN_VAL_IF_FAIL(data != NULL, NULL);
 
-    json_props[0] = props[PROP_NAME];
-    json_props[1] = props[PROP_ID];
+    GtChannel* channel = g_object_new(GT_TYPE_CHANNEL, NULL);
+    GtChannelPrivate* priv = gt_channel_get_instance_private(channel);
 
-    *n_pspecs = N_JSON_PROPS;
+    update_from_data(channel, data);
 
-    return json_props;
+    priv->followed = gt_follows_manager_is_channel_followed(main_app->fav_mgr, channel);
+
+    return channel;
 }
 
-static void
-json_serializable_iface_init(JsonSerializableIface* iface)
+GtChannel*
+gt_channel_new_from_id_and_name(const gchar* id, const gchar* name)
 {
-    iface->list_properties = json_list_props;
-}
+    RETURN_VAL_IF_FAIL(!utils_str_empty(id), NULL);
+    RETURN_VAL_IF_FAIL(!utils_str_empty(name), NULL);
 
-void
-gt_channel_update_from_raw_data(GtChannel* self, GtChannelRawData* data)
-{
-    GtChannelPrivate* priv = gt_channel_get_instance_private(self);
+    GtChannel* channel = g_object_new(GT_TYPE_CHANNEL, NULL);
+    GtChannelPrivate* priv = gt_channel_get_instance_private(channel);
+    GtChannelData* data = gt_channel_data_new();
 
-    if (!data) // TODO: Need to log error?
-        return;
+    data->id = g_strdup(id);
+    data->name = g_strdup(name);
 
-    priv->updating = TRUE;
-    g_object_notify_by_pspec(G_OBJECT(self), props[PROP_UPDATING]);
+    priv->data = data;
 
-    g_object_set(self,
-                 "viewers", data->viewers,
-                 "display-name", data->display_name,
-                 "status", data->status,
-                 "game", data->game,
-                 "preview-url", data->preview_url,
-                 "video-banner-url", data->video_banner_url,
-                 "stream-started-time", data->stream_started_time,
-                 NULL);
+    gt_channel_update(channel);
 
-    if (priv->online != data->online)
-    {
-        priv->preview_timestamp = 0;
-        g_object_set(self, "online", data->online, NULL);
-    }
+    priv->followed = gt_follows_manager_is_channel_followed(main_app->fav_mgr, channel);
 
-    update_preview(self);
+    return channel;
 }
 
 void
 gt_channel_toggle_followed(GtChannel* self)
 {
+    RETURN_IF_FAIL(self);
+
     GtChannelPrivate* priv = gt_channel_get_instance_private(self);
 
     g_object_set(self, "followed", !priv->followed, NULL);
 }
 
 void
-gt_channel_free_list(GList* list)
+gt_channel_list_free(GList* list)
 {
     g_list_free_full(list, g_object_unref);
 }
 
 gboolean
-gt_channel_compare(GtChannel* self,
-                   gpointer other)
+gt_channel_compare(GtChannel* self, gpointer other)
 {
     GtChannelPrivate* priv = gt_channel_get_instance_private(self);
     gboolean ret = TRUE;
 
     if (GT_IS_CHANNEL(other))
     {
-        gchar* name;
-        gint64 id;
+        GtChannelPrivate* opriv = gt_channel_get_instance_private(GT_CHANNEL(other));
 
-        g_object_get(G_OBJECT(other),
-                     "name", &name,
-                     "id", &id,
-                     NULL);
-
-        ret = !(g_strcmp0(priv->name, name) == 0 && priv->id == id);
-
-        g_free(name);
+        ret = !(STRING_EQUALS(priv->data->name, opriv->data->name) &&
+            STRING_EQUALS(priv->data->id, opriv->data->id));
     }
 
     return ret;
@@ -695,22 +696,165 @@ gt_channel_compare(GtChannel* self,
 const gchar*
 gt_channel_get_name(GtChannel* self)
 {
+    RETURN_VAL_IF_FAIL(GT_IS_CHANNEL(self), NULL);
+
     GtChannelPrivate* priv = gt_channel_get_instance_private(self);
 
-    return priv->name;
+    return priv->data->name;
+}
+
+const gchar*
+gt_channel_get_display_name(GtChannel* self)
+{
+    RETURN_VAL_IF_FAIL(GT_IS_CHANNEL(self), NULL);
+
+    GtChannelPrivate* priv = gt_channel_get_instance_private(self);
+
+    return utils_str_empty(priv->data->game) ?
+        priv->data->name : priv->data->display_name;
+}
+
+const gchar*
+gt_channel_get_id(GtChannel* self)
+{
+    RETURN_VAL_IF_FAIL(GT_IS_CHANNEL(self), NULL);
+
+    GtChannelPrivate* priv = gt_channel_get_instance_private(self);
+
+    return priv->data->id;
+}
+
+const gchar*
+gt_channel_get_game_name(GtChannel* self)
+{
+    RETURN_VAL_IF_FAIL(GT_IS_CHANNEL(self), NULL);
+
+    GtChannelPrivate* priv = gt_channel_get_instance_private(self);
+
+    return utils_str_empty(priv->data->game) ? "" : priv->data->game;
+}
+
+gboolean
+gt_channel_is_online(GtChannel* self)
+{
+    RETURN_VAL_IF_FAIL(GT_IS_CHANNEL(self), FALSE);
+
+    GtChannelPrivate* priv = gt_channel_get_instance_private(self);
+
+    return priv->data->online;
+}
+
+gboolean
+gt_channel_is_error(GtChannel* self)
+{
+    RETURN_VAL_IF_FAIL(GT_IS_CHANNEL(self), FALSE);
+
+    GtChannelPrivate* priv = gt_channel_get_instance_private(self);
+
+    return priv->error;
+}
+
+gboolean
+gt_channel_is_updating(GtChannel* self)
+{
+    RETURN_VAL_IF_FAIL(GT_IS_CHANNEL(self), FALSE);
+
+    GtChannelPrivate* priv = gt_channel_get_instance_private(self);
+
+    return priv->updating;
+}
+
+gboolean
+gt_channel_is_followed(GtChannel* self)
+{
+    RETURN_VAL_IF_FAIL(GT_IS_CHANNEL(self), FALSE);
+
+    GtChannelPrivate* priv = gt_channel_get_instance_private(self);
+
+    return priv->followed;
 }
 
 gboolean
 gt_channel_update(GtChannel* self)
 {
+    RETURN_VAL_IF_FAIL(GT_IS_CHANNEL(self), FALSE);
+
     GtChannelPrivate* priv = gt_channel_get_instance_private(self);
 
-    g_info("{GtChannel} Initiating update '%s'", priv->name);
+    DEBUG("Initiating update for channel with id '%s' and name '%s'",
+        priv->data->id, priv->data->name);
+
+    g_clear_pointer(&priv->error_message, g_free);
+    g_clear_pointer(&priv->error_details, g_free);
+
+    priv->error = FALSE;
+    g_object_notify_by_pspec(G_OBJECT(self), props[PROP_ERROR]);
 
     priv->updating = TRUE;
     g_object_notify_by_pspec(G_OBJECT(self), props[PROP_UPDATING]);
 
-    g_thread_pool_push(update_pool, self, NULL);
+    g_thread_pool_push(update_pool, g_object_ref(self), NULL);
 
     return TRUE;
+}
+
+const gchar*
+gt_channel_get_error_message(GtChannel* self)
+{
+    RETURN_VAL_IF_FAIL(GT_IS_CHANNEL(self), NULL);
+
+    GtChannelPrivate* priv = gt_channel_get_instance_private(self);
+
+    return priv->error_message;
+}
+
+const gchar*
+gt_channel_get_error_details(GtChannel* self)
+{
+    RETURN_VAL_IF_FAIL(GT_IS_CHANNEL(self), NULL);
+
+    GtChannelPrivate* priv = gt_channel_get_instance_private(self);
+
+    return priv->error_details;
+}
+
+GtChannelData*
+gt_channel_data_new()
+{
+    return g_slice_new0(GtChannelData);
+}
+
+void
+gt_channel_data_free(GtChannelData* data)
+{
+    if (!data) return;
+
+    g_free(data->name);
+    g_free(data->id);
+    g_free(data->game);
+    g_free(data->status);
+    g_free(data->display_name);
+    g_free(data->preview_url);
+    g_free(data->video_banner_url);
+    if (data->stream_started_time)
+        g_date_time_unref(data->stream_started_time);
+    g_slice_free(GtChannelData, data);
+}
+
+void
+gt_channel_data_list_free(GList* list)
+{
+    g_list_free_full(list, (GDestroyNotify) gt_channel_data_free);
+}
+
+gint
+gt_channel_data_compare(GtChannelData* a, GtChannelData* b)
+{
+    if (!a || !b)
+        return -1;
+
+    if (STRING_EQUALS(a->id, b->id))
+        return 0;
+
+    return -1;
 }

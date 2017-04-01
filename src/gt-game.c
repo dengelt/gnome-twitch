@@ -1,33 +1,47 @@
+/*
+ *  This file is part of GNOME Twitch - 'Enjoy Twitch on your GNU/Linux desktop'
+ *  Copyright © 2017 Vincent Szolnoky <vinszent@vinszent.com>
+ *
+ *  GNOME Twitch is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  GNOME Twitch is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with GNOME Twitch. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include "gt-game.h"
 #include "gt-app.h"
+#include "gt-win.h"
+#include "gt-resource-downloader.h"
+#include "utils.h"
 #include <glib/gi18n.h>
 
 #define TAG "GtGame"
-#include "utils.h"
+#include "gnome-twitch/gt-log.h"
 
 typedef struct
 {
-    gint64 id;
-
-    gchar* name;
-    gchar* preview_url;
+    GtGameData* data;
 
     gboolean updating;
-
-    gchar* preview_filename;
-    gint64 preview_timestamp;
 
     GdkPixbuf* preview;
 
     GdkPixbuf* logo;
 
-    gint64 viewers;
-    gint64 channels;
-
     GCancellable* cancel;
+
+    guint notify_source_id;
 } GtGamePrivate;
 
-G_DEFINE_TYPE_WITH_PRIVATE(GtGame, gt_game, G_TYPE_OBJECT)
+G_DEFINE_TYPE_WITH_PRIVATE(GtGame, gt_game, G_TYPE_INITIALLY_UNOWNED)
 
 enum
 {
@@ -43,96 +57,140 @@ enum
     NUM_PROPS
 };
 
-static GThreadPool* update_pool;
+static GtResourceDownloader* res_downloader;
 
 static GParamSpec* props[NUM_PROPS];
 
-static inline void
-set_preview(GtGame* self, GdkPixbuf* pic, gboolean save)
+static gboolean
+notify_preview_cb(gpointer udata)
 {
-    GtGamePrivate* priv = gt_game_get_instance_private(self);
+    RETURN_VAL_IF_FAIL(GT_IS_GAME(udata), G_SOURCE_REMOVE);
 
-    g_clear_object(&priv->preview);
-    priv->preview = pic;
-
-    if (save)
-        gdk_pixbuf_save(priv->preview, priv->preview_filename,
-                        "jpeg", NULL, NULL);
-
-    utils_pixbuf_scale_simple(&priv->preview,
-                              200, 270,
-                              GDK_INTERP_BILINEAR);
-
-    g_object_notify_by_pspec(G_OBJECT(self), props[PROP_PREVIEW]);
-}
-
-static void
-update_func(gpointer data, gpointer udata)
-{
-    GtGame* self = GT_GAME(data);
-    GtGamePrivate* priv = gt_game_get_instance_private(self);
-
-    GdkPixbuf* pic = gt_twitch_download_picture(main_app->twitch,
-                                                priv->preview_url,
-                                                priv->preview_timestamp);
-
-    if (pic)
-    {
-        set_preview(self, pic, TRUE);
-        g_info("{GtGame} Updated preview for game '%s'", priv->name);
-    }
-}
-
-static void
-download_preview_cb(GObject* source,
-                    GAsyncResult* res,
-                    gpointer udata)
-{
     GtGame* self = GT_GAME(udata);
     GtGamePrivate* priv = gt_game_get_instance_private(self);
-    GError* error = NULL;
 
-    GdkPixbuf* pic = g_task_propagate_pointer(G_TASK(res), &error);
-
-    if (error)
-    {
-        g_error_free(error);
-        return;
-    }
-
-    set_preview(self, pic, TRUE);
+    g_object_notify_by_pspec(G_OBJECT(self), props[PROP_PREVIEW]);
 
     priv->updating = FALSE;
     g_object_notify_by_pspec(G_OBJECT(self), props[PROP_UPDATING]);
+
+    priv->notify_source_id = 0;
+
+    return G_SOURCE_REMOVE;
+}
+
+static void
+download_image_cb(GdkPixbuf* pixbuf, gpointer udata, GError* error)
+{
+    RETURN_IF_FAIL(GT_IS_GAME(udata));
+
+    GtGame* self = GT_GAME(udata);
+    GtGamePrivate* priv = gt_game_get_instance_private(self);
+
+    /* FIXME: Propagate error */
+    RETURN_IF_FAIL(error == NULL);
+
+    if (pixbuf)
+    {
+        priv->preview = pixbuf;
+
+        utils_pixbuf_scale_simple(&priv->preview,
+            200, 270, GDK_INTERP_BILINEAR);
+    }
+
+    if (priv->notify_source_id == 0)
+    {
+        /* NOTE: Don't need to ref ourselves because we are in a async
+         * cb */
+        priv->notify_source_id = g_idle_add_full(G_PRIORITY_LOW,
+            notify_preview_cb, self, g_object_unref);
+    }
 }
 
 static void
 update_preview(GtGame* self)
 {
+    RETURN_IF_FAIL(GT_IS_GAME(self));
+
     GtGamePrivate* priv = gt_game_get_instance_private(self);
 
-    if (g_file_test(priv->preview_filename, G_FILE_TEST_EXISTS))
-    {
-        priv->preview_timestamp = utils_timestamp_file(priv->preview_filename);
-        set_preview(self, gdk_pixbuf_new_from_file(priv->preview_filename, NULL), FALSE);
-    }
+    /* utils_refresh_cancellable(&priv->cancel); */
 
-    if (!priv->preview)
-        gt_twitch_download_picture_async(main_app->twitch, priv->preview_url, 0,
-                                         priv->cancel, download_preview_cb, self);
-    else
+    /* FIXME: Handle error below */
+    priv->preview = gt_resource_downloader_download_image_immediately(res_downloader,
+        priv->data->preview_url, priv->data->id, download_image_cb, g_object_ref(self), NULL);
+
+    if (priv->preview)
     {
-        g_thread_pool_push(update_pool, self, NULL);
+        utils_pixbuf_scale_simple(&priv->preview,
+            200, 270, GDK_INTERP_BILINEAR);
+
+        if (priv->notify_source_id == 0)
+        {
+            priv->notify_source_id = g_idle_add_full(G_PRIORITY_LOW,
+                notify_preview_cb, g_object_ref(self), g_object_unref);
+        }
     }
 }
 
-GtGame*
-gt_game_new(const gchar* name, gint64 id)
+static void
+update_from_data(GtGame* self, GtGameData* data)
 {
-    return g_object_new(GT_TYPE_GAME,
-                        "name", name,
-                        "id", id,
-                        NULL);
+    RETURN_IF_FAIL(GT_IS_GAME(self));
+    RETURN_IF_FAIL(data != NULL);
+
+    GtGamePrivate* priv = gt_game_get_instance_private(self);
+
+    priv->updating = TRUE;
+    g_object_notify_by_pspec(G_OBJECT(self), props[PROP_UPDATING]);
+
+    g_autoptr(GtGameData) old_data = priv->data;
+
+    priv->data = data;
+
+    if (old_data)
+    {
+        if (!STRING_EQUALS(old_data->id, data->id))
+        {
+            GtWin* win = GT_WIN_ACTIVE;
+
+            WARNING("Unable to update game with id '%s' and name '%s' because: "
+                "New data with id '%s' does not match the current one",
+                old_data->id, old_data->name, data->id);
+
+            /* FIXME: Put GtGame in a error state like GtChannel */
+            if (GT_IS_WIN(win))
+            {
+                gt_win_show_error_message(win, "Unable to update game '%s'",
+                    "Unable to update game with id '%s' and name '%s' because: "
+                    "New data with id '%s' does not match the current one",
+                    old_data->id, old_data->name, data->id);
+            }
+
+            return;
+        }
+    }
+
+    if (!old_data || !STRING_EQUALS(old_data->preview_url, data->preview_url))
+        g_object_notify_by_pspec(G_OBJECT(self), props[PROP_PREVIEW_URL]);
+    if (!old_data || old_data->viewers != data->viewers)
+        g_object_notify_by_pspec(G_OBJECT(self), props[PROP_VIEWERS]);
+    if (!old_data || old_data->channels != data->channels)
+        g_object_notify_by_pspec(G_OBJECT(self), props[PROP_CHANNELS]);
+
+    update_preview(self);
+}
+
+static void
+dispose(GObject* object)
+{
+    GtGame* self = GT_GAME(object);
+    GtGamePrivate* priv = gt_game_get_instance_private(self);
+
+    g_clear_object(&priv->preview);
+    g_clear_object(&priv->logo);
+
+    G_OBJECT_CLASS(gt_game_parent_class)->dispose(object);
 }
 
 static void
@@ -141,27 +199,12 @@ finalize(GObject* object)
     GtGame* self = (GtGame*) object;
     GtGamePrivate* priv = gt_game_get_instance_private(self);
 
-    g_free(priv->name);
-    g_free(priv->preview_url);
-    g_free(priv->preview_filename);
-    g_clear_object(&priv->preview);
-    g_clear_object(&priv->logo);
+    gt_game_data_free(priv->data);
+
+    if (priv->notify_source_id > 0)
+        g_source_remove(priv->notify_source_id);
 
     G_OBJECT_CLASS(gt_game_parent_class)->finalize(object);
-}
-
-static void
-constructed(GObject* obj)
-{
-    GtGame* self = GT_GAME(obj);
-    GtGamePrivate* priv = gt_game_get_instance_private(self);
-    gchar* id = g_strdup_printf("%ld", priv->id);
-
-    priv->preview_filename = g_build_filename(g_get_user_cache_dir(), "gnome-twitch", "games", id, NULL);
-
-    g_free(id);
-
-    G_OBJECT_CLASS(gt_game_parent_class)->constructed(obj);
 }
 
 static void
@@ -176,16 +219,16 @@ get_property (GObject*    obj,
     switch (prop)
     {
         case PROP_ID:
-            g_value_set_int64(val, priv->id);
+            g_value_set_string(val, priv->data->id);
             break;
         case PROP_NAME:
-            g_value_set_string(val, priv->name);
+            g_value_set_string(val, priv->data->name);
             break;
         case PROP_UPDATING:
             g_value_set_boolean(val, priv->updating);
             break;
         case PROP_PREVIEW_URL:
-            g_value_set_string(val, priv->preview_url);
+            g_value_set_string(val, priv->data->preview_url);
             break;
         case PROP_PREVIEW:
             g_value_set_object(val, priv->preview);
@@ -194,10 +237,10 @@ get_property (GObject*    obj,
             g_value_set_object(val, priv->logo);
             break;
         case PROP_VIEWERS:
-            g_value_set_int64(val, priv->viewers);
+            g_value_set_int64(val, priv->data->viewers);
             break;
         case PROP_CHANNELS:
-            g_value_set_int64(val, priv->channels);
+            g_value_set_int64(val, priv->data->channels);
             break;
         default:
             G_OBJECT_WARN_INVALID_PROPERTY_ID(obj, prop, pspec);
@@ -210,34 +253,8 @@ set_property(GObject*      obj,
              const GValue* val,
              GParamSpec*   pspec)
 {
-    GtGame* self = GT_GAME(obj);
-    GtGamePrivate* priv = gt_game_get_instance_private(self);
-
     switch (prop)
     {
-        case PROP_ID:
-            priv->id = g_value_get_int64(val);
-            break;
-        case PROP_NAME:
-            g_free(priv->name);
-            priv->name = g_value_dup_string(val);
-            if (!priv->name)
-                priv->name = _("Untitled broadcast");
-            break;
-        case PROP_PREVIEW_URL:
-            g_free(priv->preview_url);
-            priv->preview_url = g_value_dup_string(val);
-            break;
-        case PROP_LOGO:
-            g_clear_object(&priv->logo);
-            priv->logo = g_value_dup_object(val);
-            break;
-        case PROP_VIEWERS:
-            priv->viewers = g_value_get_int64(val);
-            break;
-        case PROP_CHANNELS:
-            priv->channels = g_value_get_int64(val);
-            break;
         default:
             G_OBJECT_WARN_INVALID_PROPERTY_ID(obj, prop, pspec);
     }
@@ -249,84 +266,122 @@ gt_game_class_init(GtGameClass* klass)
     GObjectClass* object_class = G_OBJECT_CLASS(klass);
 
     object_class->finalize = finalize;
-    object_class->constructed = constructed;
+    object_class->dispose = dispose;
     object_class->get_property = get_property;
     object_class->set_property = set_property;
 
-    props[PROP_ID] = g_param_spec_int64("id",
-                                        "Id",
-                                        "ID of game",
-                                        0, G_MAXINT64, 0,
-                                        G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY);
-    props[PROP_NAME] = g_param_spec_string("name",
-                                           "Name",
-                                           "Name of game",
-                                           NULL,
-                                           G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY);
-    props[PROP_UPDATING] = g_param_spec_boolean("updating",
-                                                "Updating",
-                                                "Whether updating",
-                                                FALSE,
-                                                G_PARAM_READABLE);
-    props[PROP_PREVIEW_URL] = g_param_spec_string("preview-url",
-                                                  "Preview Url",
-                                                  "Current preview url",
-                                                  NULL,
-                                                  G_PARAM_READWRITE);
-    props[PROP_PREVIEW] = g_param_spec_object("preview",
-                                              "Preview",
-                                              "Preview of game",
-                                              GDK_TYPE_PIXBUF,
-                                              G_PARAM_READABLE);
-    props[PROP_LOGO] = g_param_spec_object("logo",
-                                           "Logo",
-                                           "Logo of game",
-                                           GDK_TYPE_PIXBUF,
-                                           G_PARAM_READWRITE);
-    props[PROP_VIEWERS] = g_param_spec_int64("viewers",
-                                             "Viewers",
-                                             "Total viewers of game",
-                                             0, G_MAXINT64, 0,
-                                             G_PARAM_READWRITE);
-    props[PROP_CHANNELS] = g_param_spec_int64("channels",
-                                              "Channels",
-                                              "Total channels of game",
-                                              0, G_MAXINT64, 0,
-                                              G_PARAM_READWRITE);
+    props[PROP_ID] = g_param_spec_string("id", "Id", "Id of game",
+        NULL, G_PARAM_READABLE);
+
+    props[PROP_NAME] = g_param_spec_string("name", "Name", "Name of game",
+        NULL, G_PARAM_READABLE);
+
+    props[PROP_UPDATING] = g_param_spec_boolean("updating", "Updating", "Whether updating",
+        FALSE, G_PARAM_READABLE);
+
+    props[PROP_PREVIEW_URL] = g_param_spec_string("preview-url", "Preview Url", "Current preview url",
+        NULL, G_PARAM_READABLE);
+
+    props[PROP_PREVIEW] = g_param_spec_object("preview", "Preview", "Preview of game",
+        GDK_TYPE_PIXBUF, G_PARAM_READABLE);
+
+    props[PROP_LOGO] = g_param_spec_object("logo", "Logo", "Logo of game",
+        GDK_TYPE_PIXBUF, G_PARAM_READABLE);
+
+    props[PROP_VIEWERS] = g_param_spec_int64("viewers", "Viewers", "Total viewers of game",
+        0, G_MAXINT64, 0, G_PARAM_READABLE);
+
+    props[PROP_CHANNELS] = g_param_spec_int64("channels", "Channels", "Total channels of game",
+        0, G_MAXINT64, 0, G_PARAM_READABLE);
 
     g_object_class_install_properties(object_class,
                                       NUM_PROPS,
                                       props);
 
-    update_pool = g_thread_pool_new(update_func, NULL, 1, FALSE, NULL);
+    g_autofree gchar* filepath = g_build_filename(g_get_user_cache_dir(), "gnome-twitch", "games", NULL);
+
+    res_downloader = gt_resource_downloader_new_with_cache(filepath);
+    gt_resource_downloader_set_image_filetype(res_downloader, GT_IMAGE_FILETYPE_JPEG);
+
+    g_signal_connect_swapped(main_app, "shutdown", G_CALLBACK(g_object_unref), res_downloader);
 }
 
 static void
 gt_game_init(GtGame* self)
 {
+    g_assert(GT_IS_GAME(self));
+
     GtGamePrivate* priv = gt_game_get_instance_private(self);
 
     priv->updating = FALSE;
     priv->preview = NULL;
+    priv->logo = NULL;
 }
 
-void
-gt_game_update_from_raw_data(GtGame* self, GtGameRawData* data)
+GtGame*
+gt_game_new(GtGameData* data)
 {
-    GtGamePrivate* priv = gt_game_get_instance_private(self);
+    RETURN_VAL_IF_FAIL(data != NULL, NULL);
 
-    priv->updating = TRUE;
-    g_object_notify_by_pspec(G_OBJECT(self), props[PROP_UPDATING]);
+    GtGame* game = g_object_new(GT_TYPE_GAME, NULL);
 
-    g_object_set(self,
-                 "preview-url", data->preview_url,
-                 NULL);
+    update_from_data(game, data);
 
-    update_preview(self);
+    return game;
 }
 
 void
-gt_game_free_list(GList* list)
+gt_game_list_free(GList* list)
 {
     g_list_free_full(list, g_object_unref);
+}
+
+const gchar*
+gt_game_get_name(GtGame* self)
+{
+    RETURN_VAL_IF_FAIL(GT_IS_GAME(self), NULL);
+
+    GtGamePrivate* priv = gt_game_get_instance_private(self);
+
+    return priv->data->name;
+}
+
+gboolean
+gt_game_get_updating(GtGame* self)
+{
+    RETURN_VAL_IF_FAIL(GT_IS_GAME(self), FALSE);
+
+    GtGamePrivate* priv = gt_game_get_instance_private(self);
+
+    return priv->updating;
+}
+
+gint64
+gt_game_get_viewers(GtGame* self)
+{
+    RETURN_VAL_IF_FAIL(GT_IS_GAME(self), -1);
+
+    GtGamePrivate* priv = gt_game_get_instance_private(self);
+
+    return priv->data->viewers;
+}
+
+GtGameData*
+gt_game_data_new()
+{
+    GtGameData* ret = g_slice_new0(GtGameData);
+    ret->viewers = -1;
+
+    return ret;
+}
+
+void
+gt_game_data_free(GtGameData* data)
+{
+    if (!data) return;
+
+    g_free(data->name);
+    g_free(data->preview_url);
+    g_free(data->logo_url);
+    g_slice_free(GtGameData, data);
 }

@@ -1,135 +1,174 @@
 <?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+ This file is part of GNOME Twitch - 'Enjoy Twitch on your GNU/Linux desktop'
+ Copyright © 2017 Vincent Szolnoky <vinszent@vinszent.com>
+
+ GNOME Twitch is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+
+ GNOME Twitch is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License
+ along with GNOME Twitch. If not, see <http://www.gnu.org/licenses/>.
+-->
+
 <interface>
-  <template class="GtPlayer" parent="GtkBin">
+  <template class="GtPlayer" parent="GtkStack">
     <style>
       <class name="gt-player"/>
     </style>
     <child>
-      <object class="GtkOverlay">
+      <object class="GtkBox" id="empty_box">
         <property name="visible">True</property>
+        <property name="orientation">vertical</property>
+        <property name="halign">center</property>
+        <property name="valign">center</property>
+        <property name="spacing">7</property>
         <child>
-          <object class="GtkPaned" id="docking_pane">
+          <object class="GtkImage">
             <property name="visible">True</property>
-            <property name="position-set">True</property>
+            <property name="icon-name">application-x-addon-symbolic</property>
+            <property name="icon-size">6</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkLabel" id="empty_title_label">
+            <property name="visible">True</property>
+            <property name="label" translatable="yes">No players loaded!</property>
+            <property name="name">empty-label</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkLinkButton">
+            <property name="visible">True</property>
+            <property name="halign">center</property>
+            <property name="label" translatable="yes">Click here to load one</property>
+            <property name="margin">0</property>
+            <property name="name">empty-link-button</property>
+            <property name="action-name">win.show_settings_with_view</property>
+            <property name="action-target">'plugins'</property>
+            <signal name="activate-link" handler="gtk_true"/>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="GtkBox" id="error_box">
+        <property name="visible">true</property>
+        <property name="orientation">vertical</property>
+        <property name="halign">center</property>
+        <property name="valign">center</property>
+        <property name="spacing">7</property>
+        <property name="name">error-box</property>
+        <child>
+          <object class="GtkImage">
+            <property name="visible">True</property>
+            <property name="icon-name">face-crying-symbolic</property>
+            <property name="icon-size">6</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkLabel">
+            <property name="visible">True</property>
+            <property name="label" translatable="yes">An error occurred when opening the stream</property>
+            <property name="name">empty-label</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkBox">
+            <property name="visible">True</property>
+            <property name="orientation">horizontal</property>
+            <property name="halign">center</property>
             <child>
-              <object class="GtkOverlay" id="player_overlay">
+              <object class="GtkLabel">
                 <property name="visible">True</property>
-                <child type="overlay">
-                  <object class="GtkRevealer" id="buffer_revealer">
-                    <property name="visible">True</property>
-                    <property name="reveal-child">False</property>
-                    <property name="halign">center</property>
-                    <property name="valign">center</property>
-                    <property name="expand">True</property>
-                    <property name="transition-type">crossfade</property>
-                    <child>
-                      <object class="GtkBox" id="buffer_box">
-                        <property name="visible">True</property>
-                        <property name="orientation">vertical</property>
-                        <property name="name">buffer-box</property>
-                        <child>
-                          <object class="GtkSpinner">
-                            <property name="visible">True</property>
-                            <property name="active">True</property>
-                            <property name="height-request">48</property>
-                            <property name="width-request">48</property>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkLabel" id="buffer_label">
-                            <property name="visible">True</property>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                  </object>
-                </child>
-                <child>
-                  <object class="GtkBox" id="empty_box">
-                    <property name="visible">True</property>
-                    <property name="orientation">vertical</property>
-                    <property name="halign">center</property>
-                    <property name="valign">center</property>
-                    <property name="spacing">7</property>
-                    <style>
-                      <class name="empty-games-box"/>
-                    </style>
-                    <child>
-                      <object class="GtkImage" id="empty_image">
-                        <property name="visible">True</property>
-                        <property name="icon-name">application-x-addon-symbolic</property>
-                        <property name="icon-size">6</property>
-                      </object>
-                    </child>
-                    <child>
-                      <object class="GtkLabel" id="empty_title_label">
-                        <property name="visible">True</property>
-                        <property name="label" translatable="yes">No player backends loaded!</property>
-                        <style>
-                          <class name="empty-title"/>
-                        </style>
-                      </object>
-                    </child>
-                    <child>
-                      <object class="GtkBox">
-                        <property name="visible">True</property>
-                        <property name="orientation">horizontal</property>
-                        <property name="halign">center</property>
-                        <child>
-                          <object class="GtkLabel" id="empty_subtitle_label_left">
-                            <property name="visible">True</property>
-                            <property name="label" translatable="yes">Click </property>
-                            <style>
-                              <class name="empty-subtitle"/>
-                            </style>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkLinkButton">
-                            <property name="visible">True</property>
-                            <property name="label" translatable="yes">here</property>
-                            <property name="margin">0</property>
-                            <property name="action-name">win.show_settings_with_view</property>
-                            <property name="action-target">'plugins'</property>
-                            <signal name="activate-link" handler="gtk_true"/>
-                            <style>
-                              <class name="empty-link-button"/>
-                              <class name="empty-subtitle"/>
-                            </style>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkLabel" id="empty_subtitle_label_right">
-                            <property name="visible">True</property>
-                            <property name="label" translatable="yes"> to load one</property>
-                            <style>
-                              <class name="empty-subtitle"/>
-                            </style>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                  </object>
-                </child>
+                <property name="label" translatable="yes">Please check the error message above. </property>
+                <property name="name">empty-sub-label</property>
               </object>
-              <packing>
-                <property name="resize">True</property>
-                <property name="shrink">True</property>
-              </packing>
+            </child>
+            <child>
+              <object class="GtkLinkButton" id="reload_button">
+                <property name="visible">True</property>
+                <property name="label" translatable="yes">Click here to reload</property>
+                <property name="name">empty-link-button</property>
+                <signal name="activate-link" handler="gtk_true"/>
+              </object>
             </child>
           </object>
         </child>
-        <child type="overlay">
-          <object class="GtkRevealer" id="fullscreen_bar_revealer">
+      </object>
+    </child>
+    <child>
+      <object class="GtkEventBox" id="player_box">
+        <property name="visible">true</property>
+        <property name="visible-window">false</property>
+        <child>
+          <object class="GtkOverlay" id="fullscreen_overlay">
             <property name="visible">True</property>
-            <property name="valign">start</property>
-            <property name="reveal-child">False</property>
             <child>
-              <object class="GtkEventBox">
+              <object class="GtkPaned" id="docking_pane">
                 <property name="visible">True</property>
+                <property name="position-set">True</property>
                 <child>
-                  <object class="GtPlayerHeaderBar" id="fullscreen_bar">
+                  <object class="GtkOverlay" id="player_overlay">
                     <property name="visible">True</property>
+                    <child type="overlay">
+                      <object class="GtkRevealer" id="buffer_revealer">
+                        <property name="visible">True</property>
+                        <property name="reveal-child">False</property>
+                        <property name="halign">center</property>
+                        <property name="valign">center</property>
+                        <property name="expand">True</property>
+                        <property name="transition-type">crossfade</property>
+                        <child>
+                          <object class="GtkBox" id="buffer_box">
+                            <property name="visible">True</property>
+                            <property name="orientation">vertical</property>
+                            <property name="name">buffer-box</property>
+                            <child>
+                                <object class="GtkSpinner">
+                                  <property name="visible">True</property>
+                                <property name="active">True</property>
+                                <property name="height-request">48</property>
+                                <property name="width-request">48</property>
+                              </object>
+                            </child>
+                            <child>
+                                <object class="GtkLabel" id="buffer_label">
+                                  <property name="visible">True</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="resize">True</property>
+                    <property name="shrink">True</property>
+                  </packing>
+                </child>
+              </object>
+            </child>
+            <child type="overlay">
+              <object class="GtkRevealer" id="fullscreen_bar_revealer">
+                <property name="visible">True</property>
+                <property name="valign">start</property>
+                <property name="reveal-child">False</property>
+                <child>
+                  <object class="GtkEventBox">
+                    <property name="visible">True</property>
+                    <child>
+                      <object class="GtPlayerHeaderBar" id="fullscreen_bar">
+                        <property name="visible">True</property>
+                      </object>
+                    </child>
                   </object>
                 </child>
               </object>

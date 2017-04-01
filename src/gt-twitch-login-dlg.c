@@ -1,3 +1,21 @@
+/*
+ *  This file is part of GNOME Twitch - 'Enjoy Twitch on your GNU/Linux desktop'
+ *  Copyright © 2017 Vincent Szolnoky <vinszent@vinszent.com>
+ *
+ *  GNOME Twitch is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  GNOME Twitch is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with GNOME Twitch. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include "gt-twitch-login-dlg.h"
 #include "config.h"
 #include <glib/gi18n.h>
@@ -15,17 +33,11 @@ typedef struct
 {
     GtkWidget* web_view;
     GRegex* token_redirect_regex;
+
+    GCancellable* cancel;
 } GtTwitchLoginDlgPrivate;
 
 G_DEFINE_TYPE_WITH_PRIVATE(GtTwitchLoginDlg, gt_twitch_login_dlg, GTK_TYPE_DIALOG)
-
-enum
-{
-    PROP_0,
-    NUM_PROPS
-};
-
-static GParamSpec* props[NUM_PROPS];
 
 GtTwitchLoginDlg*
 gt_twitch_login_dlg_new(GtkWindow* parent)
@@ -38,44 +50,29 @@ gt_twitch_login_dlg_new(GtkWindow* parent)
 }
 
 static void
-finalise(GObject* obj)
+destroy_cb(GtkWidget* widget,
+    gpointer udata)
 {
-    GtTwitchLoginDlg* self = GT_TWITCH_LOGIN_DLG(obj);
+    g_assert(GT_IS_TWITCH_LOGIN_DLG(widget));
+
+    GtTwitchLoginDlg* self = GT_TWITCH_LOGIN_DLG(widget);
     GtTwitchLoginDlgPrivate* priv = gt_twitch_login_dlg_get_instance_private(self);
 
-    G_OBJECT_CLASS(gt_twitch_login_dlg_parent_class)->finalize(obj);
+    g_cancellable_cancel(priv->cancel);
 }
 
 static void
-get_property(GObject* obj,
-             guint prop,
-             GValue* val,
-             GParamSpec* pspec)
+dispose(GObject* obj)
 {
+    g_assert(GT_IS_TWITCH_LOGIN_DLG(obj));
+
     GtTwitchLoginDlg* self = GT_TWITCH_LOGIN_DLG(obj);
     GtTwitchLoginDlgPrivate* priv = gt_twitch_login_dlg_get_instance_private(self);
 
-    switch (prop)
-    {
-        default:
-            G_OBJECT_WARN_INVALID_PROPERTY_ID(obj, prop, pspec);
-    }
-}
+    g_clear_pointer(&priv->token_redirect_regex, (GDestroyNotify) g_regex_unref);
+    g_clear_pointer(&priv->cancel, (GDestroyNotify) g_object_unref);
 
-static void
-set_property(GObject* obj,
-             guint prop,
-             const GValue* val,
-             GParamSpec* pspec)
-{
-    GtTwitchLoginDlg* self = GT_TWITCH_LOGIN_DLG(obj);
-    GtTwitchLoginDlgPrivate* priv = gt_twitch_login_dlg_get_instance_private(self);
-
-    switch (prop)
-    {
-        default:
-            G_OBJECT_WARN_INVALID_PROPERTY_ID(obj, prop, pspec);
-    }
+    G_OBJECT_CLASS(gt_twitch_login_dlg_parent_class)->dispose(obj);
 }
 
 static void
@@ -86,41 +83,43 @@ gt_twitch_login_dlg_class_init(GtTwitchLoginDlgClass* klass)
 
     WEBKIT_TYPE_WEB_VIEW;
 
-    obj_class->finalize = finalise;
-    obj_class->get_property = get_property;
-    obj_class->set_property = set_property;
+    obj_class->dispose = dispose;
 
     gtk_widget_class_set_template_from_resource(widget_class,
-                                                "/com/vinszent/GnomeTwitch/ui/gt-twitch-login-dlg.ui");
+        "/com/vinszent/GnomeTwitch/ui/gt-twitch-login-dlg.ui");
 
     gtk_widget_class_bind_template_child_private(widget_class, GtTwitchLoginDlg, web_view);
 }
 
 static void
-oauth_info_cb(GObject* source,
-             GAsyncResult* res,
-             gpointer udata)
+fetch_oauth_info_cb(GObject* source,
+    GAsyncResult* res, gpointer udata)
 {
     GtTwitchLoginDlg* self = GT_TWITCH_LOGIN_DLG(udata);
-    GError* error = NULL;
+    GError* err = NULL;
 
-    GtTwitchOAuthInfo* oauth_info = g_task_propagate_pointer(G_TASK(res), &error);
+    GtOAuthInfo* oauth_info = gt_twitch_fetch_oauth_info_finish(main_app->twitch, res, &err);
 
-    if (error)
+    if (err)
     {
-        gtk_widget_destroy(GTK_WIDGET(self));
+        GtkWindow* win = gtk_window_get_transient_for(GTK_WINDOW(self));
 
-        return; //TODO: Show error to user
+        g_assert(GT_IS_WIN(win));
+
+        gt_win_show_error_message(GT_WIN(win), "Unable to get user info", err->message);
+
+        g_error_free(err);
+    }
+    else
+    {
+        MESSAGEF("Successfully got username '%s' and id '%s'", oauth_info->user_name, oauth_info->user_id);
+
+        gt_app_set_oauth_info(main_app, oauth_info);
+
+        gt_win_show_info_message(GT_WIN(gtk_window_get_transient_for(GTK_WINDOW(self))),
+            _("Successfully logged in to Twitch!"));
     }
 
-    MESSAGEF("Successfully got username '%s'", oauth_info->user_name);
-
-    g_object_set(main_app, "user-name", oauth_info->user_name, NULL);
-
-    gt_win_show_info_message(GT_WIN(gtk_window_get_transient_for(GTK_WINDOW(self))),
-                             _("Successfully logged in to Twitch!"));
-
-    g_free(oauth_info);
     gtk_widget_destroy(GTK_WIDGET(self));
 }
 
@@ -159,21 +158,17 @@ redirect_cb(WebKitWebView* web_view,
 
     if (uri == NULL || strlen(uri) == 0) return FALSE;
 
-    INFOF("Redirect uri is '%s'", uri);
+    MESSAGE("Redirect uri is '%s'", uri);
 
     g_regex_match(priv->token_redirect_regex, uri, 0, &match_info);
+
     if (g_match_info_matches(match_info))
     {
-        gchar* token = g_match_info_fetch(match_info, 1);
-
-        g_object_set(main_app, "oauth-token", token, NULL);
+        g_autofree gchar* token = g_match_info_fetch(match_info, 1);
 
         MESSAGEF("Successfully got OAuth token '%s'", token);
 
-        gt_twitch_oauth_info_async(main_app->twitch, oauth_info_cb, self);
-
-        g_free(token);
-
+        gt_twitch_fetch_oauth_info_async(main_app->twitch, token, fetch_oauth_info_cb, priv->cancel, self);
     }
     else if (g_str_has_prefix(uri, "http://localhost/?error=access_denied"))
         WARNING("Error logging in or login cancelled");
@@ -188,7 +183,12 @@ gt_twitch_login_dlg_init(GtTwitchLoginDlg* self)
 {
     GtTwitchLoginDlgPrivate* priv = gt_twitch_login_dlg_get_instance_private(self);
 
-    priv->token_redirect_regex = g_regex_new("http://localhost/#access_token=(\\S+)&scope=chat_login", 0, 0, NULL);
+    g_autofree gchar* scopes = g_strjoinv("+", (gchar**) TWITCH_AUTH_SCOPES);
+    g_autofree gchar* scopes_escaped = g_strjoinv("\\+", (gchar**) TWITCH_AUTH_SCOPES);
+    g_autofree gchar* regex_str = g_strdup_printf("http:\\/\\/localhost\\/#access_token=(\\S+)&scope=%s", scopes_escaped);
+
+    priv->token_redirect_regex = g_regex_new(regex_str, 0, 0, NULL);
+    priv->cancel = g_cancellable_new();
 
     gtk_widget_init_template(GTK_WIDGET(self));
 
@@ -198,7 +198,9 @@ gt_twitch_login_dlg_init(GtTwitchLoginDlg* self)
     g_signal_connect(priv->web_view, "decide-policy", G_CALLBACK(redirect_cb), self);
 #endif
 
-    const gchar* uri = g_strdup_printf("https://api.twitch.tv/kraken/oauth2/authorize?response_type=token&client_id=%s&redirect_uri=%s&scope=%s", "afjnp6n4ufzott4atb3xpb8l5a31aav", "http://localhost", "chat_login+user_follows_edit");
+    g_signal_connect(self, "destroy", G_CALLBACK(destroy_cb), NULL);
+
+    const gchar* uri = g_strdup_printf("https://api.twitch.tv/kraken/oauth2/authorize?response_type=token&client_id=%s&redirect_uri=%s&scope=%s", "afjnp6n4ufzott4atb3xpb8l5a31aav", "http://localhost", scopes);
 
     webkit_web_view_load_uri(WEBKIT_WEB_VIEW(priv->web_view), uri);
 }

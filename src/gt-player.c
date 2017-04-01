@@ -1,3 +1,21 @@
+/*
+ *  This file is part of GNOME Twitch - 'Enjoy Twitch on your GNU/Linux desktop'
+ *  Copyright © 2017 Vincent Szolnoky <vinszent@vinszent.com>
+ *
+ *  GNOME Twitch is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  GNOME Twitch is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with GNOME Twitch. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include "gt-player.h"
 #include "gt-twitch.h"
 #include "gt-win.h"
@@ -5,23 +23,42 @@
 #include "gt-enums.h"
 #include "gt-chat.h"
 #include "gnome-twitch/gt-player-backend.h"
+#include "utils.h"
 #include <libpeas-gtk/peas-gtk.h>
 #include <glib/gi18n.h>
-#include "utils.h"
+#include <json-glib/json-glib.h>
 
 #define TAG "GtPlayer"
 #include "gnome-twitch/gt-log.h"
 
 #define FULLSCREEN_BAR_REVEAL_HEIGHT 50
+#define CHAT_RESIZE_HANDLE_SIZE 10
+#define CHAT_MIN_WIDTH 290
+#define CHAT_MIN_HEIGHT 200
+
+#define CHANNEL_SETTINGS_FILE g_build_filename(g_get_user_data_dir(), "gnome-twitch", "channel_settings.json", NULL);
+#define CHANNEL_SETTINGS_FILE_VERSION 1
+
+typedef enum
+{
+    MOUSE_POS_LEFT_HANDLE,
+    MOUSE_POS_RIGHT_HANDLE,
+    MOUSE_POS_TOP_HANDLE,
+    MOUSE_POS_BOTTOM_HANDLE,
+    MOUSE_POS_INSIDE,
+    MOUSE_POS_OUTSIDE,
+} MousePos;
 
 typedef struct
 {
     GSimpleActionGroup* action_group;
 
-    GtTwitchStreamQuality quality;
+    gchar* quality;
 
-    GtChatViewSettings* chat_settings;
+    GtPlayerChannelSettings* cur_channel_settings;
 
+    GtkWidget* player_box;
+    GtkWidget* error_box;
     GtkWidget* empty_box;
     GtkWidget* player_overlay;
     GtkWidget* docking_pane;
@@ -31,31 +68,33 @@ typedef struct
     GtkWidget* buffer_revealer;
     GtkWidget* buffer_label;
     GtkWidget* player_widget;
+    GtkWidget* reload_button;
 
     GtPlayerBackend* backend;
     PeasPluginInfo* backend_info;
 
     GtChannel* channel;
 
+    GList* stream_qualities;
+
     gdouble volume;
     gdouble prev_volume;
     gdouble muted;
     gboolean playing;
-    gdouble chat_opacity;
-    gdouble chat_width;
-    gdouble chat_height;
-    gdouble chat_x;
-    gdouble chat_y;
-    gboolean chat_docked;
-    gboolean chat_visible;
-    gboolean chat_dark_theme;
-    gdouble docked_handle_position;
+    gboolean edit_chat;
+
+    MousePos start_mouse_pos;
+    gboolean mouse_pressed;
+
+    guint mouse_pressed_handler_id;
+    guint mouse_released_handler_id;
+    guint mouse_moved_handler_id;
 
     guint inhibitor_cookie;
     guint mouse_source;
 } GtPlayerPrivate;
 
-G_DEFINE_TYPE_WITH_PRIVATE(GtPlayer, gt_player, GTK_TYPE_BIN)
+G_DEFINE_TYPE_WITH_PRIVATE(GtPlayer, gt_player, GTK_TYPE_STACK)
 
 enum
 {
@@ -66,18 +105,199 @@ enum
     PROP_PLAYING,
     PROP_CHAT_VISIBLE,
     PROP_CHAT_DOCKED,
-    PROP_CHAT_WIDTH,
-    PROP_CHAT_HEIGHT,
-    PROP_CHAT_X,
-    PROP_CHAT_Y,
     PROP_CHAT_DARK_THEME,
     PROP_CHAT_OPACITY,
     PROP_DOCKED_HANDLE_POSITION,
+    PROP_EDIT_CHAT,
+    PROP_STREAM_QUALITY,
     NUM_PROPS
 };
 
 static GParamSpec* props[NUM_PROPS];
 
+static GHashTable* channel_settings_table;
+
+static void
+load_channel_settings()
+{
+    g_autofree gchar* fp = CHANNEL_SETTINGS_FILE;
+    g_autoptr(JsonParser) parser = json_parser_new();
+    g_autoptr(JsonReader) reader = NULL;
+    g_autoptr(GError) err = NULL;
+    gint version = 0;
+    gint count = 0;
+
+    g_hash_table_remove_all(channel_settings_table);
+
+    MESSAGE("Loading chat settings");
+
+    if (!g_file_test(fp, G_FILE_TEST_EXISTS))
+    {
+        INFO("Chat settings file at '%s' doesn't exist", fp);
+        return;
+    }
+
+    json_parser_load_from_file(parser, fp, &err);
+
+    if (err)
+    {
+        WARNING("Unable to load chat settings because: %s", err->message);
+        return;
+    }
+
+    reader = json_reader_new(json_parser_get_root(parser));
+
+/* FIXME: Propagate errors to UI once GtApp implements a startup error queue */
+#define READ_JSON_VALUE(name, p)                                        \
+    if (json_reader_read_member(reader, name))                          \
+    {                                                                   \
+        p = _Generic(p,                                                 \
+            gboolean: json_reader_get_boolean_value(reader),            \
+            gdouble: json_reader_get_double_value(reader),              \
+            gint64: json_reader_get_int_value(reader));                 \
+    }                                                                   \
+    else                                                                \
+    {                                                                   \
+        WARNING("Couldn't read value '%s' from element '%d' in chat settings file." \
+            "Will assign default value.", name, i);                     \
+    }                                                                   \
+    json_reader_end_member(reader);                                     \
+
+    if (json_reader_read_member(reader, "version"))
+    {
+        version = json_reader_get_int_value(reader);
+        INFO("Found version number '%d' for chat settings file", version);
+    }
+    else
+        INFO("No version number found, assuming version 0 for chat settings file");
+    json_reader_end_member(reader);
+
+    if (version > 0) json_reader_read_member(reader, "chat-settings");
+
+    count = json_reader_count_elements(reader);
+
+    INFO("Reading '%d' elements from chat settings file", count);
+
+    for (gint i = 0; i < count; i++)
+    {
+        GtPlayerChannelSettings* settings = NULL;
+        gchar* id = NULL;
+
+        if (!json_reader_read_element(reader, i))
+        {
+            WARNING("Couldn't read element '%d' from chat settings file."
+                "This item will be removed on next save.", i);
+            continue;
+        }
+
+        if (json_reader_read_member(reader, version > 0 ? "id" : "name"))
+            id = g_strdup(json_reader_get_string_value(reader));
+        else
+        {
+            WARNING("Couldn't read value '%s' from element '%d' from chat settings file."
+                "This item will be removed on next save.", version > 0 ? "id" : "name", i);
+            continue;
+        }
+        json_reader_end_member(reader);
+
+        settings = gt_player_channel_settings_new();
+
+        READ_JSON_VALUE("dark-theme", settings->dark_theme);
+        READ_JSON_VALUE("visible", settings->visible);
+        READ_JSON_VALUE("docked", settings->docked);
+        READ_JSON_VALUE("opacity", settings->opacity);
+        READ_JSON_VALUE("width", settings->width);
+        READ_JSON_VALUE("height", settings->height);
+        READ_JSON_VALUE("x-pos", settings->x_pos);
+        READ_JSON_VALUE("y-pos", settings->y_pos);
+        READ_JSON_VALUE("docked-handle-pos", settings->docked_handle_pos);
+
+        json_reader_end_element(reader);
+
+        g_hash_table_insert(channel_settings_table, id, settings);
+    }
+
+    if (version > 0) json_reader_end_member(reader);
+
+#undef READ_JSON_VALUE
+}
+
+static void
+save_channel_settings()
+{
+    g_autofree gchar* fp = CHANNEL_SETTINGS_FILE;
+    g_autoptr(JsonBuilder) builder = json_builder_new();
+    g_autoptr(JsonGenerator) gen = json_generator_new();
+    g_autoptr(JsonNode) final = NULL;
+    g_autoptr(GError) err = NULL;
+    GHashTableIter iter;
+    gchar* key;
+    GtPlayerChannelSettings* settings;
+
+    MESSAGE("Saving chat settings");
+
+    json_builder_begin_object(builder);
+
+    json_builder_set_member_name(builder, "version");
+    json_builder_add_int_value(builder, CHANNEL_SETTINGS_FILE_VERSION);
+
+    json_builder_set_member_name(builder, "chat-settings");
+    json_builder_begin_array(builder);
+
+    g_hash_table_iter_init(&iter, channel_settings_table);
+
+    while (g_hash_table_iter_next(&iter, (gpointer*) &key, (gpointer*) &settings))
+    {
+        json_builder_begin_object(builder);
+
+        json_builder_set_member_name(builder, "id");
+        json_builder_add_string_value(builder, key);
+
+        json_builder_set_member_name(builder, "dark-theme");
+        json_builder_add_boolean_value(builder, settings->dark_theme);
+
+        json_builder_set_member_name(builder, "visible");
+        json_builder_add_boolean_value(builder, settings->visible);
+
+        json_builder_set_member_name(builder, "docked");
+        json_builder_add_boolean_value(builder, settings->docked);
+
+        json_builder_set_member_name(builder, "opacity");
+        json_builder_add_double_value(builder, settings->opacity);
+
+        json_builder_set_member_name(builder, "width");
+        json_builder_add_double_value(builder, settings->width);
+
+        json_builder_set_member_name(builder, "height");
+        json_builder_add_double_value(builder, settings->height);
+
+        json_builder_set_member_name(builder, "x-pos");
+        json_builder_add_double_value(builder, settings->x_pos);
+
+        json_builder_set_member_name(builder, "y-pos");
+        json_builder_add_double_value(builder, settings->y_pos);
+
+        json_builder_set_member_name(builder, "docked-handle-pos");
+        json_builder_add_double_value(builder, settings->docked_handle_pos);
+
+        json_builder_end_object(builder);
+    }
+
+    json_builder_end_array(builder);
+
+    json_builder_end_object(builder);
+
+    final = json_builder_get_root(builder);
+
+    json_generator_set_root(gen, final);
+    json_generator_to_file(gen, fp, &err);
+
+    if (err)
+    {
+        WARNING("Unable to write chat settings file to '%s' because: %s",
+            fp, err->message);
+    }
+}
 
 static void
 finalise(GObject* obj)
@@ -87,7 +307,7 @@ finalise(GObject* obj)
 
     G_OBJECT_CLASS(gt_player_parent_class)->finalize(obj);
 
-    //TODO: Unref stuff
+    //TODO: Unref more stuff
 
     g_object_unref(priv->chat_view);
     g_object_unref(priv->backend);
@@ -109,89 +329,72 @@ destroy_cb(GtkWidget* widget,
     g_object_unref(priv->action_group);
 }
 
+static gboolean
+update_chat_undocked_position(GtkOverlay* overlay,
+    GtkWidget* widget, GdkRectangle* chat_alloc, gpointer udata)
+{
+    GtPlayer* self = GT_PLAYER(udata);
+    GtPlayerPrivate* priv = gt_player_get_instance_private(self);
+    GtkAllocation alloc;
+
+    if (widget != priv->chat_view) return FALSE;
+
+    /* NOTE: This is to shut GTK up */
+    gtk_widget_get_preferred_size(priv->chat_view, NULL, NULL);
+
+    gtk_widget_get_allocation(GTK_WIDGET(self), &alloc);
+
+    chat_alloc->width = ROUND(priv->cur_channel_settings->width*alloc.width);
+    chat_alloc->height = ROUND(priv->cur_channel_settings->height*alloc.height);
+    chat_alloc->x = ROUND(priv->cur_channel_settings->x_pos*(alloc.width - chat_alloc->width));
+    chat_alloc->y = ROUND(priv->cur_channel_settings->y_pos*(alloc.height - chat_alloc->height));
+
+    return TRUE;
+}
+
 static void
 update_docked(GtPlayer* self)
 {
     GtPlayerPrivate* priv = gt_player_get_instance_private(self);
 
-    if (priv->chat_docked)
+    if (priv->cur_channel_settings->docked)
     {
         gdouble width;
 
-        if (gtk_widget_get_parent(priv->chat_view))
+        width = ROUND(gtk_widget_get_allocated_width(GTK_WIDGET(self)));
+
+        if (width < 2.0)
+            return;
+
+        if (gtk_widget_get_parent(priv->chat_view) == priv->player_overlay)
             gtk_container_remove(GTK_CONTAINER(priv->player_overlay), priv->chat_view);
 
-        gtk_paned_pack2(GTK_PANED(priv->docking_pane), priv->chat_view, TRUE, TRUE);
+        if (gtk_widget_get_parent(priv->chat_view) == NULL)
+            gtk_paned_pack2(GTK_PANED(priv->docking_pane), priv->chat_view, FALSE, TRUE);
 
-        width = gtk_widget_get_allocated_width(GTK_WIDGET(self));
+        g_object_set(priv->chat_view,
+            "opacity", 1.0,
+            NULL);
+
+        g_object_set(self,
+            "edit-chat", FALSE,
+            NULL);
 
         gtk_paned_set_position(GTK_PANED(priv->docking_pane),
-                               priv->docked_handle_position*width);
-
-        g_object_set(priv->chat_view, "opacity", 1.0, NULL);
+            ROUND(priv->cur_channel_settings->docked_handle_pos*width));
     }
     else
     {
-        if (gtk_widget_get_parent(priv->chat_view))
+        if (gtk_widget_get_parent(priv->chat_view) == priv->docking_pane)
             gtk_container_remove(GTK_CONTAINER(priv->docking_pane), priv->chat_view);
 
-        gtk_overlay_add_overlay(GTK_OVERLAY(priv->player_overlay), priv->chat_view);
+        if (gtk_widget_get_parent(priv->chat_view) == NULL)
+            gtk_overlay_add_overlay(GTK_OVERLAY(priv->player_overlay), priv->chat_view);
 
-        g_object_set(priv->chat_view, "opacity", priv->chat_opacity, NULL);
+        g_object_set(priv->chat_view,
+            "opacity", priv->cur_channel_settings->opacity,
+            NULL);
     }
-}
-
-static gboolean
-chat_position_cb(GtkOverlay* overlay,
-                 GtkWidget* widget,
-                 GdkRectangle* alloc,
-                 gpointer udata)
-{
-    GtPlayer* self = GT_PLAYER(udata);
-    GtPlayerPrivate* priv = gt_player_get_instance_private(self);
-
-    if (widget == priv->chat_view)
-    {
-        GtkAllocation self_alloc;
-        GtkAllocation chat_alloc;
-
-        gtk_widget_get_allocation(GTK_WIDGET(self), &self_alloc);
-
-        if (self_alloc.x == -1 && self_alloc.y == -1)
-            return FALSE;
-
-        gtk_widget_get_preferred_size(widget, NULL, NULL); //To shut GTK up
-
-        gtk_widget_get_allocation(widget, &chat_alloc);
-
-        // Wait until chat properly allocated space
-        if (chat_alloc.width > 1 && chat_alloc.height > 1)
-        {
-            gdouble dx = 0.0;
-            gdouble dy = 0.0;
-
-            dx = 0.5*(priv->chat_width*self_alloc.width - chat_alloc.width)
-                / (gdouble) self_alloc.width;
-            dy = 0.5*(priv->chat_height*self_alloc.height - chat_alloc.height)
-                / (gdouble) self_alloc.height;
-
-            priv->chat_x -= ABS(dx*0.5) < 1e-3 ? 0.0 : dx*0.5;
-            priv->chat_y -= ABS(dy*0.5) < 1e-3 ? 0.0 : dy*0.5;
-
-            g_object_notify_by_pspec(G_OBJECT(self), props[PROP_CHAT_X]);
-            g_object_notify_by_pspec(G_OBJECT(self), props[PROP_CHAT_Y]);
-        }
-
-
-        alloc->x = (gint) (priv->chat_x*self_alloc.width);
-        alloc->y = (gint) (priv->chat_y*self_alloc.height);
-        alloc->width = (gint) (priv->chat_width*self_alloc.width);
-        alloc->height = (gint) (priv->chat_height*self_alloc.height);
-
-        return TRUE;
-    }
-    else
-        return FALSE;
 }
 
 static void
@@ -219,21 +422,6 @@ update_volume(GtPlayer* self)
     g_object_notify_by_pspec(G_OBJECT(self), props[PROP_MUTED]);
 }
 
-static void
-scale_chat_cb(GtkWidget* widget,
-              GtkAllocation* alloc,
-              gpointer udata)
-{
-    GtPlayer* self = GT_PLAYER(udata);
-    GtPlayerPrivate* priv = gt_player_get_instance_private(self);
-
-    if (priv->chat_docked)
-    {
-        g_object_notify_by_pspec(G_OBJECT(self),
-                                 props[PROP_DOCKED_HANDLE_POSITION]);
-    }
-}
-
 static gboolean
 motion_cb(GtkWidget* widget,
           GdkEventMotion* evt,
@@ -242,7 +430,7 @@ motion_cb(GtkWidget* widget,
     GtPlayer* self = GT_PLAYER(udata);
     GtPlayerPrivate* priv = gt_player_get_instance_private(self);
 
-    if (gt_win_is_fullscreen(GT_WIN_TOPLEVEL(widget)) && evt->y_root < FULLSCREEN_BAR_REVEAL_HEIGHT)
+    if (gt_win_is_fullscreen(GT_WIN_TOPLEVEL(widget)) && evt->y < FULLSCREEN_BAR_REVEAL_HEIGHT)
     {
         gtk_widget_set_visible(priv->fullscreen_bar_revealer, TRUE);
         gtk_revealer_set_reveal_child(GTK_REVEALER(priv->fullscreen_bar_revealer), TRUE);
@@ -252,7 +440,7 @@ motion_cb(GtkWidget* widget,
         gtk_revealer_set_reveal_child(GTK_REVEALER(priv->fullscreen_bar_revealer), FALSE);
     }
 
-    return GDK_EVENT_STOP;
+    return GDK_EVENT_PROPAGATE;
 }
 
 static gboolean
@@ -262,6 +450,8 @@ player_button_press_cb(GtkWidget* widget,
 {
     if (evt->button == 1 && evt->type == GDK_2BUTTON_PRESS)
         gt_win_toggle_fullscreen(GT_WIN_TOPLEVEL(widget));
+
+    gtk_widget_grab_focus(widget);
 
     return GDK_EVENT_PROPAGATE;
 }
@@ -320,23 +510,249 @@ fullscreen_cb(GObject* source,
         gtk_revealer_set_reveal_child(GTK_REVEALER(priv->fullscreen_bar_revealer), FALSE);
 }
 
-static gboolean
-win_configure_cb(GtkWidget* widget,
-                 GdkEventConfigure* evt,
-                 gpointer udata)
+static MousePos
+get_mouse_pos(GtPlayer* self, gint x, gint y)
 {
+    GtPlayerPrivate* priv = gt_player_get_instance_private(self);
+    GtkAllocation alloc;
+
+    gtk_widget_get_allocation(priv->chat_view, &alloc);
+
+    gtk_widget_translate_coordinates(priv->chat_view, GTK_WIDGET(self),
+        alloc.x, alloc.y, &alloc.x, &alloc.y);
+
+    gboolean inside_horizontally = alloc.x < x && x < alloc.x + alloc.width;
+    gboolean inside_vertically = alloc.y < y && y < alloc.y + alloc.height;
+
+    if (alloc.x - CHAT_RESIZE_HANDLE_SIZE < x &&
+        x < alloc.x + CHAT_RESIZE_HANDLE_SIZE &&
+        inside_vertically)
+    {
+        return MOUSE_POS_LEFT_HANDLE;
+    }
+    else if (alloc.x + alloc.width - CHAT_RESIZE_HANDLE_SIZE < x &&
+        x < alloc.x + alloc.width + CHAT_RESIZE_HANDLE_SIZE &&
+        inside_vertically)
+    {
+        return MOUSE_POS_RIGHT_HANDLE;
+    }
+    else if (alloc.y - CHAT_RESIZE_HANDLE_SIZE < y &&
+        y < alloc.y + CHAT_RESIZE_HANDLE_SIZE &&
+        inside_horizontally)
+    {
+        return MOUSE_POS_TOP_HANDLE;
+    }
+    else if (alloc.y + alloc.height - CHAT_RESIZE_HANDLE_SIZE < y &&
+        y < alloc.y + alloc.height + CHAT_RESIZE_HANDLE_SIZE &&
+        inside_horizontally)
+    {
+        return MOUSE_POS_BOTTOM_HANDLE;
+    }
+    else if (inside_horizontally && inside_vertically)
+    {
+        return MOUSE_POS_INSIDE;
+    }
+    else
+    {
+        return MOUSE_POS_OUTSIDE;
+    }
+}
+
+static gboolean
+mouse_pressed_cb(GtkWidget* widget,
+    GdkEvent* evt, gpointer udata)
+{
+    g_assert(GT_IS_PLAYER(udata));
+
     GtPlayer* self = GT_PLAYER(udata);
     GtPlayerPrivate* priv = gt_player_get_instance_private(self);
 
-    if (priv->chat_docked)
-    {
-        gint width = gtk_widget_get_allocated_width(GTK_WIDGET(self));
+    GtkAllocation alloc;
 
-        gtk_paned_set_position(GTK_PANED(priv->docking_pane),
-                               (gint) (priv->docked_handle_position*width));
+    gtk_widget_get_allocation(priv->chat_view, &alloc);
+
+    priv->start_mouse_pos = get_mouse_pos(self, evt->button.x, evt->button.y);
+
+    if (priv->start_mouse_pos != MOUSE_POS_OUTSIDE)
+        priv->mouse_pressed = TRUE;
+
+    return GDK_EVENT_PROPAGATE;
+}
+
+static gboolean
+mouse_released_cb(GtkWidget* widget,
+    GdkEvent* evt, gpointer udata)
+{
+    g_assert(GT_IS_PLAYER(udata));
+
+    GtPlayer* self = GT_PLAYER(udata);
+    GtPlayerPrivate* priv = gt_player_get_instance_private(self);
+
+    priv->mouse_pressed = FALSE;
+    priv->start_mouse_pos = MOUSE_POS_OUTSIDE;
+
+    return GDK_EVENT_PROPAGATE;
+}
+
+static gboolean
+mouse_moved_cb(GtkWidget* widget,
+    GdkEvent* evt, gpointer udata)
+{
+    g_assert(GT_IS_PLAYER(udata));
+
+    GtPlayer* self = GT_PLAYER(udata);
+    GtPlayerPrivate* priv = gt_player_get_instance_private(self);
+
+    MousePos pos;
+    gint x, y;
+
+    x = ROUND(evt->button.x);
+    y = ROUND(evt->button.y);
+
+    pos = get_mouse_pos(self, x, y);
+
+    if (priv->mouse_pressed)
+    {
+        GtkAllocation alloc;
+
+        gtk_widget_get_allocation(GTK_WIDGET(self), &alloc);
+
+        gint width_request = ROUND(priv->cur_channel_settings->width*alloc.width);
+        gint height_request = ROUND(priv->cur_channel_settings->height*alloc.height);
+        gint margin_start = ROUND(priv->cur_channel_settings->x_pos*(alloc.width - width_request));
+        gint margin_top = ROUND(priv->cur_channel_settings->y_pos*(alloc.height - height_request));
+
+        if (priv->start_mouse_pos == MOUSE_POS_LEFT_HANDLE && x >= 0)
+        {
+            width_request += margin_start - x;
+
+            width_request = MAX(width_request, CHAT_MIN_WIDTH);
+
+            margin_start = width_request == CHAT_MIN_WIDTH ? margin_start : x;
+        }
+        else if (priv->start_mouse_pos == MOUSE_POS_RIGHT_HANDLE &&
+            x <= gtk_widget_get_allocated_width(GTK_WIDGET(self)))
+        {
+            width_request += x - margin_start - width_request;
+
+            width_request = MAX(width_request, CHAT_MIN_WIDTH);
+        }
+        else if (priv->start_mouse_pos == MOUSE_POS_TOP_HANDLE && y >= 0)
+        {
+            height_request += margin_top - y;
+
+            height_request = MAX(height_request, CHAT_MIN_HEIGHT);
+
+            margin_top = height_request == CHAT_MIN_HEIGHT ? margin_top : y;
+        }
+        else if (priv->start_mouse_pos == MOUSE_POS_BOTTOM_HANDLE &&
+            y <= gtk_widget_get_allocated_height(GTK_WIDGET(self)))
+        {
+            height_request += y - margin_top - height_request;
+
+            height_request = MAX(height_request, CHAT_MIN_HEIGHT);
+        }
+        else if (priv->start_mouse_pos == MOUSE_POS_INSIDE)
+        {
+            margin_start = MIN(gtk_widget_get_allocated_width(GTK_WIDGET(self)) - width_request,
+                MAX(0, x - width_request / 2));
+
+            margin_top = MIN(gtk_widget_get_allocated_height(GTK_WIDGET(self)) - height_request,
+                MAX(0, y - height_request / 2));
+        }
+
+        priv->cur_channel_settings->x_pos = margin_start / (gdouble) (alloc.width - width_request);
+        priv->cur_channel_settings->y_pos = margin_top / (gdouble) (alloc.height - height_request);
+        priv->cur_channel_settings->width = width_request / (gdouble) alloc.width;
+        priv->cur_channel_settings->height = height_request / (gdouble) alloc.height;
+
+        gtk_widget_queue_resize_no_redraw(priv->chat_view);
+
+    }
+    else
+    {
+        g_autoptr(GdkCursor) cursor = NULL;
+
+        switch (pos)
+        {
+            case MOUSE_POS_LEFT_HANDLE:
+                cursor = gdk_cursor_new_for_display(gdk_display_get_default(), GDK_LEFT_SIDE);
+                break;
+            case MOUSE_POS_RIGHT_HANDLE:
+                cursor = gdk_cursor_new_for_display(gdk_display_get_default(), GDK_RIGHT_SIDE);
+                break;
+            case MOUSE_POS_TOP_HANDLE:
+                cursor = gdk_cursor_new_for_display(gdk_display_get_default(), GDK_TOP_SIDE);
+                break;
+            case MOUSE_POS_BOTTOM_HANDLE:
+                cursor = gdk_cursor_new_for_display(gdk_display_get_default(), GDK_BOTTOM_SIDE);
+                break;
+            case MOUSE_POS_INSIDE:
+                cursor = gdk_cursor_new_for_display(gdk_display_get_default(), GDK_FLEUR);
+                break;
+            case MOUSE_POS_OUTSIDE:
+                cursor = NULL;
+                break;
+            default:
+                g_assert_not_reached();
+        }
+
+        gdk_window_set_cursor(evt->any.window, cursor);
     }
 
     return GDK_EVENT_PROPAGATE;
+}
+static void
+update_edit_chat(GtPlayer* self)
+{
+    GtPlayerPrivate* priv = gt_player_get_instance_private(self);
+
+    g_object_set(priv->player_box, "above-child", priv->edit_chat, NULL);
+
+    if (priv->edit_chat)
+    {
+        priv->mouse_pressed_handler_id = g_signal_connect(self, "button-press-event",
+            G_CALLBACK(mouse_pressed_cb), self);
+
+        priv->mouse_released_handler_id = g_signal_connect(self, "button-release-event",
+            G_CALLBACK(mouse_released_cb), self);
+
+        priv->mouse_moved_handler_id = g_signal_connect(self, "motion-notify-event",
+            G_CALLBACK(mouse_moved_cb), self);
+
+        ADD_STYLE_CLASS(self, "edit-chat");
+    }
+    else
+    {
+        if (priv->mouse_pressed_handler_id > 0)
+        {
+            g_signal_handler_disconnect(self, priv->mouse_pressed_handler_id);
+            priv->mouse_pressed_handler_id = 0;
+        }
+
+        if (priv->mouse_released_handler_id > 0)
+        {
+            g_signal_handler_disconnect(self, priv->mouse_released_handler_id);
+            priv->mouse_pressed_handler_id = 0;
+        }
+
+        if (priv->mouse_moved_handler_id > 0)
+        {
+            g_signal_handler_disconnect(self, priv->mouse_moved_handler_id);
+            priv->mouse_moved_handler_id = 0;
+        }
+
+        REMOVE_STYLE_CLASS(self, "edit-chat");
+    }
+}
+
+static void
+app_shutdown_cb(GApplication* app,
+    gpointer udata)
+{
+    g_assert_null(udata);
+
+    save_channel_settings();
 }
 
 static void
@@ -365,37 +781,28 @@ set_property(GObject* obj,
             g_clear_object(&priv->channel);
             priv->channel = g_value_dup_object(val);
             break;
-        case PROP_CHAT_WIDTH:
-            priv->chat_width = g_value_get_double(val);
-            gtk_widget_queue_allocate(priv->player_overlay);
-            break;
-        case PROP_CHAT_HEIGHT:
-            priv->chat_height = g_value_get_double(val);
-            gtk_widget_queue_allocate(priv->player_overlay);
-            break;
         case PROP_CHAT_DOCKED:
-            priv->chat_docked = g_value_get_boolean(val);
+            priv->cur_channel_settings->docked = g_value_get_boolean(val);
             update_docked(self);
             break;
-        case PROP_CHAT_X:
-            priv->chat_x = g_value_get_double(val);
-            gtk_widget_queue_allocate(priv->player_overlay);
-            break;
-        case PROP_CHAT_Y:
-            priv->chat_y = g_value_get_double(val);
-            gtk_widget_queue_allocate(priv->player_overlay);
-            break;
         case PROP_CHAT_OPACITY:
-            priv->chat_opacity = g_value_get_double(val);
+            priv->cur_channel_settings->opacity = g_value_get_double(val);
             break;
         case PROP_CHAT_VISIBLE:
-            priv->chat_visible = g_value_get_boolean(val);
+            priv->cur_channel_settings->visible = g_value_get_boolean(val);
             break;
         case PROP_CHAT_DARK_THEME:
-            priv->chat_dark_theme = g_value_get_boolean(val);
+            priv->cur_channel_settings->dark_theme = g_value_get_boolean(val);
             break;
         case PROP_DOCKED_HANDLE_POSITION:
-            priv->docked_handle_position = g_value_get_double(val);
+            priv->cur_channel_settings->docked_handle_pos = g_value_get_double(val);
+            break;
+        case PROP_EDIT_CHAT:
+            priv->edit_chat = g_value_get_boolean(val);
+            update_edit_chat(self);
+            break;
+        case PROP_STREAM_QUALITY:
+            gt_player_set_quality(self, g_value_get_string(val));
             break;
         default:
             G_OBJECT_WARN_INVALID_PROPERTY_ID(obj, prop, pspec);
@@ -426,32 +833,26 @@ get_property(GObject* obj,
         case PROP_PLAYING:
             g_value_set_boolean(val, priv->playing);
             break;
-        case PROP_CHAT_WIDTH:
-            g_value_set_double(val, priv->chat_width);
-            break;
-        case PROP_CHAT_HEIGHT:
-            g_value_set_double(val, priv->chat_height);
-            break;
         case PROP_CHAT_DOCKED:
-            g_value_set_boolean(val, priv->chat_docked);
-            break;
-        case PROP_CHAT_X:
-            g_value_set_double(val, priv->chat_x);
-            break;
-        case PROP_CHAT_Y:
-            g_value_set_double(val, priv->chat_y);
+            g_value_set_boolean(val, priv->cur_channel_settings->docked);
             break;
         case PROP_CHAT_OPACITY:
-            g_value_set_double(val, priv->chat_opacity);
+            g_value_set_double(val, priv->cur_channel_settings->opacity);
             break;
         case PROP_CHAT_VISIBLE:
-            g_value_set_boolean(val, priv->chat_visible);
+            g_value_set_boolean(val, priv->cur_channel_settings->visible);
             break;
         case PROP_CHAT_DARK_THEME:
-            g_value_set_boolean(val, priv->chat_dark_theme);
+            g_value_set_boolean(val, priv->cur_channel_settings->dark_theme);
             break;
         case PROP_DOCKED_HANDLE_POSITION:
-            g_value_set_double(val, priv->docked_handle_position);
+            g_value_set_double(val, priv->cur_channel_settings->docked_handle_pos);
+            break;
+        case PROP_EDIT_CHAT:
+            g_value_set_boolean(val, priv->edit_chat);
+            break;
+        case PROP_STREAM_QUALITY:
+            g_value_set_string(val, priv->quality);
             break;
         default:
             G_OBJECT_WARN_INVALID_PROPERTY_ID(obj, prop, pspec);
@@ -463,72 +864,91 @@ streams_list_cb(GObject* source,
                 GAsyncResult* res,
                 gpointer udata)
 {
+    g_assert(GT_IS_PLAYER(udata));
+    g_assert(G_IS_TASK(res));
+    g_assert(GT_IS_TWITCH(source));
+
     GtPlayer* self = GT_PLAYER(udata);
     GtPlayerPrivate* priv = gt_player_get_instance_private(self);
-    GList* streams;
-    GtTwitchStreamData* stream;
-    GtTwitchStreamQuality default_quality;
+    const GtTwitchStreamData* stream_data;
+    g_autoptr(GError) err = NULL;
 
-    streams = g_task_propagate_pointer(G_TASK(res), NULL); //TODO: Error handling
+    priv->stream_qualities = gt_twitch_all_streams_finish(GT_TWITCH(source), res, &err);
 
-    if (!streams)
+    if (g_error_matches(err, GT_TWITCH_ERROR, GT_TWITCH_ERROR_SOUP_NOT_FOUND))
     {
-        g_warning("{GtPlayer} Error opening stream");
+        GtWin* win = GT_WIN_TOPLEVEL(self);
+
+        gt_win_show_info_message(win, _("Unable to open channel %s because it's offline"),
+            gt_channel_get_name(priv->channel));
+
+        gtk_stack_set_visible_child(GTK_STACK(self), priv->error_box);
+
+        gt_chat_disconnect(GT_CHAT(priv->chat_view));
+    }
+    else if (err)
+    {
+        GtWin* win = GT_WIN_TOPLEVEL(self);
+
+        gt_win_show_error_message(win, "Error opening stream", err->message);
+
+        gtk_stack_set_visible_child(GTK_STACK(self), priv->error_box);
+
+        gt_chat_disconnect(GT_CHAT(priv->chat_view));
+
         return;
     }
 
-    stream = gt_twitch_stream_list_filter_quality(streams, priv->quality);
+    stream_data = gt_twitch_stream_list_filter_quality(priv->stream_qualities, priv->quality);
+
+    //NOTE: Incase we get back a different quality from what we asked for
+    //eg. when then quality doesn't exist, so we get the first one (normally source)
+    g_free(priv->quality);
+    priv->quality = g_strdup(stream_data->quality);
+    g_object_notify_by_pspec(G_OBJECT(self), props[PROP_STREAM_QUALITY]);
 
     g_object_set(self, "playing", FALSE, NULL);
-    g_object_set(priv->backend, "uri", stream->url, NULL);
+    g_object_set(priv->backend, "uri", stream_data->url, NULL);
     g_object_set(self, "playing", TRUE, NULL);
 
     priv->inhibitor_cookie = gtk_application_inhibit(GTK_APPLICATION(main_app),
-                                                     GTK_WINDOW(GTK_WINDOW(GT_WIN_TOPLEVEL(self))),
-                                                     GTK_APPLICATION_INHIBIT_IDLE,
-                                                     "Playing a stream");
+        GTK_WINDOW(GTK_WINDOW(GT_WIN_TOPLEVEL(self))), GTK_APPLICATION_INHIBIT_IDLE, "Playing a stream");
 }
 
 static void
-realise_cb(GtkWidget* widget,
+reload_button_cb(GtkButton* button,
+    GtPlayer* self)
+{
+    g_assert(GT_IS_PLAYER(self));
+
+    GtPlayerPrivate* priv = gt_player_get_instance_private(self);
+
+    //NOTE: Need to do this because of the way open_channel works
+    //it will dereference channel before referencing it again
+    gt_player_open_channel(self, g_object_ref(priv->channel));
+
+    g_object_unref(priv->channel);
+}
+
+static void
+realize_cb(GtkWidget* widget,
             gpointer udata)
 {
     GtPlayer* self = GT_PLAYER(udata);
     GtPlayerPrivate* priv = gt_player_get_instance_private(self);
     GtWin* win = GT_WIN_TOPLEVEL(self);
 
+    g_assert(GT_IS_WIN(win));
+
     gtk_widget_insert_action_group(GTK_WIDGET(win), "player",
-                                   G_ACTION_GROUP(priv->action_group));
+        G_ACTION_GROUP(priv->action_group));
 
-    //Hack to get the bar connected properly
-
+    //NOTE: Hack to get the bar connected properly
     gtk_widget_realize(priv->fullscreen_bar);
     g_object_notify_by_pspec(G_OBJECT(self), props[PROP_CHAT_VISIBLE]);
     g_object_notify_by_pspec(G_OBJECT(self), props[PROP_DOCKED_HANDLE_POSITION]);
 
-    g_signal_connect(win, "configure-event", G_CALLBACK(win_configure_cb), self);
     g_signal_connect(win, "notify::fullscreen", G_CALLBACK(fullscreen_cb), self);
-}
-
-static void
-set_quality_action_cb(GSimpleAction* action,
-                      GVariant* arg,
-                      gpointer udata)
-{
-    GtPlayer* self = GT_PLAYER(udata);
-    GtPlayerPrivate* priv = gt_player_get_instance_private(self);
-    GEnumClass* eclass;
-    GEnumValue* eval;
-
-    eclass = g_type_class_ref(GT_TYPE_TWITCH_STREAM_QUALITY);
-    eval = g_enum_get_value_by_nick(eclass, g_variant_get_string(arg, NULL));
-
-    if (eval->value != priv->quality)
-        gt_player_set_quality(self, eval->value);
-
-    g_simple_action_set_state(action, arg);
-
-    g_type_class_unref(eclass);
 }
 
 static gboolean
@@ -583,41 +1003,41 @@ plugin_loaded_cb(PeasEngine* engine,
 
         if (priv->backend_info)
         {
-            peas_engine_unload_plugin(main_app->plugins_engine,
-                                      priv->backend_info);
+            peas_engine_unload_plugin(main_app->players_engine,
+                priv->backend_info);
         }
 
         ext = peas_engine_create_extension(engine, info,
-                                           GT_TYPE_PLAYER_BACKEND,
-                                           NULL);
+            GT_TYPE_PLAYER_BACKEND, NULL);
 
         priv->backend = GT_PLAYER_BACKEND(ext);
         priv->backend_info = g_boxed_copy(PEAS_TYPE_PLUGIN_INFO,
                                           info);
 
         g_signal_connect(priv->backend, "notify::buffer-fill",
-                         G_CALLBACK(buffer_fill_cb), self);
+            G_CALLBACK(buffer_fill_cb), self);
 
         g_object_bind_property(self, "volume",
-                               priv->backend, "volume",
-                               G_BINDING_DEFAULT | G_BINDING_SYNC_CREATE | G_BINDING_BIDIRECTIONAL);
+            priv->backend, "volume",
+            G_BINDING_DEFAULT | G_BINDING_SYNC_CREATE | G_BINDING_BIDIRECTIONAL);
         g_object_bind_property(self, "playing",
-                               priv->backend, "playing",
-                               G_BINDING_DEFAULT | G_BINDING_SYNC_CREATE);
+            priv->backend, "playing",
+            G_BINDING_DEFAULT | G_BINDING_SYNC_CREATE);
         g_object_bind_property(self, "chat-opacity",
-                               priv->chat_view, "opacity",
-                               G_BINDING_DEFAULT | G_BINDING_SYNC_CREATE);
+            priv->chat_view, "opacity",
+            G_BINDING_DEFAULT | G_BINDING_SYNC_CREATE);
         g_object_bind_property(self, "chat-dark-theme",
-                               priv->chat_view, "dark-theme",
-                               G_BINDING_DEFAULT | G_BINDING_SYNC_CREATE);
+            priv->chat_view, "dark-theme",
+            G_BINDING_DEFAULT | G_BINDING_SYNC_CREATE);
         g_object_bind_property(self, "chat-visible",
-                               priv->chat_view, "visible",
-                               G_BINDING_DEFAULT | G_BINDING_SYNC_CREATE);
+            priv->chat_view, "visible",
+            G_BINDING_DEFAULT | G_BINDING_SYNC_CREATE);
 
-        gtk_container_remove(GTK_CONTAINER(priv->player_overlay), priv->empty_box);
+        gtk_stack_set_visible_child(GTK_STACK(self), priv->player_box);
 
         priv->player_widget = gt_player_backend_get_widget(priv->backend);
         gtk_widget_add_events(priv->player_widget, GDK_POINTER_MOTION_MASK);
+        gtk_widget_set_can_focus(priv->player_widget, TRUE);
         gtk_container_add(GTK_CONTAINER(priv->player_overlay), priv->player_widget);
         gtk_widget_show_all(priv->player_overlay);
 
@@ -642,9 +1062,9 @@ plugin_unloaded_cb(PeasEngine* engine,
         MESSAGEF("Unloaded player backend '%s'", peas_plugin_info_get_name(info));
 
         gtk_container_remove(GTK_CONTAINER(priv->player_overlay),
-                             gt_player_backend_get_widget(priv->backend));
-        gtk_container_add(GTK_CONTAINER(priv->player_overlay),
-                          priv->empty_box);
+            gt_player_backend_get_widget(priv->backend));
+
+        gtk_stack_set_visible_child(GTK_STACK(self), priv->empty_box);
 
         priv->player_widget = NULL;
 
@@ -664,71 +1084,38 @@ gt_player_class_init(GtPlayerClass* klass)
     object_class->get_property = get_property;
     object_class->set_property = set_property;
 
-    props[PROP_VOLUME] = g_param_spec_double("volume",
-                                             "Volume",
-                                             "Current volume",
-                                             0, 1.0, 0.3,
-                                             G_PARAM_READWRITE);
-    props[PROP_MUTED] = g_param_spec_boolean("muted",
-                                             "Muted",
-                                             "Whether muted",
-                                             FALSE,
-                                             G_PARAM_READWRITE);
-    props[PROP_CHANNEL] = g_param_spec_object("channel",
-                                              "Channel",
-                                              "Current channel",
-                                              GT_TYPE_CHANNEL,
-                                              G_PARAM_READWRITE);
-    props[PROP_PLAYING] = g_param_spec_boolean("playing",
-                                               "Playing",
-                                               "Whether playing",
-                                               FALSE,
-                                               G_PARAM_READWRITE);
-    props[PROP_CHAT_VISIBLE] = g_param_spec_boolean("chat-visible",
-                                                    "Chat Visible",
-                                                    "Whether chat visible",
-                                                    TRUE,
-                                                    G_PARAM_READWRITE);
-    props[PROP_CHAT_DOCKED] = g_param_spec_boolean("chat-docked",
-                                                   "Chat Docked",
-                                                   "Whether chat docked",
-                                                   TRUE,
-                                                   G_PARAM_READWRITE);
-    props[PROP_CHAT_WIDTH] = g_param_spec_double("chat-width",
-                                                 "Chat Width",
-                                                 "Current chat width",
-                                                 0, 1.0, 0.2,
-                                                 G_PARAM_READWRITE);
-    props[PROP_CHAT_HEIGHT] = g_param_spec_double("chat-height",
-                                                  "Chat Height",
-                                                  "Current chat height",
-                                                  0, 1.0, 1.0,
-                                                  G_PARAM_READWRITE);
-    props[PROP_CHAT_X] = g_param_spec_double("chat-x",
-                                             "Chat X",
-                                             "Current chat x",
-                                             0, 1.0, 0.2,
-                                             G_PARAM_READWRITE);
-    props[PROP_CHAT_Y] = g_param_spec_double("chat-y",
-                                             "Chat Y",
-                                             "Current chat y",
-                                             0, 1.0, 0.2,
-                                             G_PARAM_READWRITE);
-    props[PROP_CHAT_DARK_THEME] = g_param_spec_boolean("chat-dark-theme",
-                                                       "Chat Dark Theme",
-                                                       "Whether chat dark theme",
-                                                       TRUE,
-                                                       G_PARAM_READWRITE | G_PARAM_CONSTRUCT);
-    props[PROP_CHAT_OPACITY] = g_param_spec_double("chat-opacity",
-                                                   "Chat Opacity",
-                                                   "Current chat opacity",
-                                                   0, 1.0, 1.0,
-                                                   G_PARAM_READWRITE);
-    props[PROP_DOCKED_HANDLE_POSITION] = g_param_spec_double("docked-handle-position",
-                                                             "Docked Handle Position",
-                                                             "Current docked handle position",
-                                                             0, 1.0, 0,
-                                                             G_PARAM_READWRITE);
+    props[PROP_VOLUME] = g_param_spec_double("volume", "Volume", "Current volume",
+        0, 1.0, 0.3, G_PARAM_READWRITE);
+
+    props[PROP_MUTED] = g_param_spec_boolean("muted", "Muted", "Whether muted",
+        FALSE, G_PARAM_READWRITE);
+
+    props[PROP_CHANNEL] = g_param_spec_object("channel", "Channel", "Current channel",
+        GT_TYPE_CHANNEL, G_PARAM_READWRITE);
+
+    props[PROP_PLAYING] = g_param_spec_boolean("playing", "Playing", "Whether playing",
+        FALSE, G_PARAM_READWRITE);
+
+    props[PROP_CHAT_VISIBLE] = g_param_spec_boolean("chat-visible", "Chat Visible", "Whether chat visible",
+        TRUE, G_PARAM_READWRITE);
+
+    props[PROP_CHAT_DOCKED] = g_param_spec_boolean("chat-docked", "Chat Docked", "Whether chat docked",
+        TRUE, G_PARAM_READWRITE);
+
+    props[PROP_CHAT_DARK_THEME] = g_param_spec_boolean("chat-dark-theme", "Chat Dark Theme", "Whether chat dark theme",
+        TRUE, G_PARAM_READWRITE | G_PARAM_CONSTRUCT);
+
+    props[PROP_CHAT_OPACITY] = g_param_spec_double("chat-opacity", "Chat Opacity", "Current chat opacity",
+        0, 1.0, 1.0, G_PARAM_READWRITE);
+
+    props[PROP_DOCKED_HANDLE_POSITION] = g_param_spec_double("docked-handle-position", "Docked Handle Position", "Current docked handle position",
+        0, 1.0, 0, G_PARAM_READWRITE);
+
+    props[PROP_EDIT_CHAT] = g_param_spec_boolean("edit-chat", "Edit chat", "Whether to edit chat",
+        FALSE, G_PARAM_READWRITE);
+
+    props[PROP_STREAM_QUALITY] = g_param_spec_string("stream-quality", "Stream quality", "Current stream quality",
+        NULL, G_PARAM_READWRITE);
 
     g_object_class_install_properties(object_class, NUM_PROPS, props);
 
@@ -740,38 +1127,14 @@ gt_player_class_init(GtPlayerClass* klass)
     gtk_widget_class_bind_template_child_private(GTK_WIDGET_CLASS(klass), GtPlayer, fullscreen_bar_revealer);
     gtk_widget_class_bind_template_child_private(GTK_WIDGET_CLASS(klass), GtPlayer, buffer_revealer);
     gtk_widget_class_bind_template_child_private(GTK_WIDGET_CLASS(klass), GtPlayer, buffer_label);
+    gtk_widget_class_bind_template_child_private(GTK_WIDGET_CLASS(klass), GtPlayer, player_box);
+    gtk_widget_class_bind_template_child_private(GTK_WIDGET_CLASS(klass), GtPlayer, error_box);
+    gtk_widget_class_bind_template_child_private(GTK_WIDGET_CLASS(klass), GtPlayer, reload_button);
+
+    channel_settings_table = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, (GDestroyNotify) gt_player_channel_settings_free);
+
+    load_channel_settings();
 }
-
-static GActionEntry actions[] =
-{
-    //TODO: Make these GPropertyAction?
-    {"set_quality", NULL, "s", "'source'", set_quality_action_cb},
-};
-
-static void
-chat_settings_changed_cb(GObject* source,
-                         GParamSpec* pspec,
-                         gpointer udata)
-{
-    GtPlayer* self = GT_PLAYER(udata);
-    GtPlayerPrivate* priv = gt_player_get_instance_private(self);
-
-    if (!priv->chat_settings)
-        return;
-
-    g_object_get(G_OBJECT(self),
-                 "chat-docked", &priv->chat_settings->docked,
-                 "chat-visible", &priv->chat_settings->visible,
-                 "chat-width", &priv->chat_settings->width,
-                 "chat-height", &priv->chat_settings->height,
-                 "chat-x", &priv->chat_settings->x_pos,
-                 "chat-y", &priv->chat_settings->y_pos,
-                 "chat-dark-theme", &priv->chat_settings->dark_theme,
-                 "chat-opacity", &priv->chat_settings->opacity,
-                 "docked-handle-position", &priv->chat_settings->docked_handle_pos,
-                 NULL);
-}
-
 
 //Target -> source
 static gboolean
@@ -816,6 +1179,11 @@ gt_player_init(GtPlayer* self)
 
     gtk_widget_init_template(GTK_WIDGET(self));
 
+    gtk_widget_add_events(GTK_WIDGET(self), GDK_POINTER_MOTION_MASK);
+
+    priv->mouse_pressed = FALSE;
+    priv->cur_channel_settings = gt_player_channel_settings_new();
+
     g_object_set(self, "volume",
                  g_settings_get_double(main_app->settings, "volume"),
                  NULL);
@@ -826,8 +1194,6 @@ gt_player_init(GtPlayer* self)
     g_object_ref(priv->chat_view); //TODO: Unref in finalise
 
     priv->action_group = g_simple_action_group_new();
-    g_action_map_add_action_entries(G_ACTION_MAP(priv->action_group), actions,
-                                    G_N_ELEMENTS(actions), self);
 
     action = g_property_action_new("show_chat", self, "chat-visible");
     g_action_map_add_action(G_ACTION_MAP(priv->action_group), G_ACTION(action));
@@ -841,39 +1207,39 @@ gt_player_init(GtPlayer* self)
     g_action_map_add_action(G_ACTION_MAP(priv->action_group), G_ACTION(action));
     g_object_unref(action);
 
-    g_object_bind_property_full(self, "docked-handle-position",
-                                priv->docking_pane, "position",
-                                G_BINDING_DEFAULT | G_BINDING_SYNC_CREATE | G_BINDING_BIDIRECTIONAL,
-                                handle_position_to, handle_position_from,
-                                self, NULL);
+    action = g_property_action_new("edit_chat", self, "edit-chat");
+    g_action_map_add_action(G_ACTION_MAP(priv->action_group), G_ACTION(action));
+    g_object_unref(action);
 
-    utils_signal_connect_oneshot(self, "realize", G_CALLBACK(realise_cb), self);
+    action = g_property_action_new("set_stream_quality", self, "stream-quality");
+    g_action_map_add_action(G_ACTION_MAP(priv->action_group), G_ACTION(action));
+    g_object_unref(action);
+
+    g_object_bind_property_full(self, "docked-handle-position",
+        priv->docking_pane, "position",
+        G_BINDING_DEFAULT | G_BINDING_SYNC_CREATE | G_BINDING_BIDIRECTIONAL,
+        handle_position_to, handle_position_from, self, NULL);
+
+    utils_signal_connect_oneshot(self, "realize", G_CALLBACK(realize_cb), self);
+    utils_signal_connect_oneshot_swapped(priv->docking_pane, "size-allocate", G_CALLBACK(update_docked), self);
     g_signal_connect(priv->fullscreen_bar_revealer, "notify::child-revealed", G_CALLBACK(revealer_revealed_cb), self);
     g_signal_connect(priv->buffer_revealer, "notify::child-revealed", G_CALLBACK(revealer_revealed_cb), self);
-    g_signal_connect(self, "motion-notify-event", G_CALLBACK(motion_cb), self);
-    g_signal_connect(self, "notify::chat-docked", G_CALLBACK(chat_settings_changed_cb), self);
-    g_signal_connect(self, "notify::chat-visible", G_CALLBACK(chat_settings_changed_cb), self);
-    g_signal_connect(self, "notify::chat-width", G_CALLBACK(chat_settings_changed_cb), self);
-    g_signal_connect(self, "notify::chat-height", G_CALLBACK(chat_settings_changed_cb), self);
-    g_signal_connect(self, "notify::chat-x", G_CALLBACK(chat_settings_changed_cb), self);
-    g_signal_connect(self, "notify::chat-y", G_CALLBACK(chat_settings_changed_cb), self);
-    g_signal_connect(self, "notify::chat-dark-theme", G_CALLBACK(chat_settings_changed_cb), self);
-    g_signal_connect(self, "notify::chat-opacity", G_CALLBACK(chat_settings_changed_cb), self);
-    g_signal_connect(self, "notify::docked-handle-position", G_CALLBACK(chat_settings_changed_cb), self);
-    g_signal_connect(priv->player_overlay, "get-child-position", G_CALLBACK(chat_position_cb), self);
-    utils_signal_connect_oneshot(priv->docking_pane, "size-allocate", G_CALLBACK(scale_chat_cb), self);
-    g_signal_connect_after(main_app->plugins_engine, "load-plugin", G_CALLBACK(plugin_loaded_cb), self);
-    g_signal_connect(main_app->plugins_engine, "unload-plugin", G_CALLBACK(plugin_unloaded_cb), self);
+    g_signal_connect(priv->player_box, "motion-notify-event", G_CALLBACK(motion_cb), self);
+    g_signal_connect_after(main_app->players_engine, "load-plugin", G_CALLBACK(plugin_loaded_cb), self);
+    g_signal_connect(main_app->players_engine, "unload-plugin", G_CALLBACK(plugin_unloaded_cb), self);
     g_signal_connect(self, "destroy", G_CALLBACK(destroy_cb), self);
+    g_signal_connect(priv->reload_button, "clicked", G_CALLBACK(reload_button_cb), self);
+    g_signal_connect(main_app, "shutdown", G_CALLBACK(app_shutdown_cb), NULL);
+    g_signal_connect_object(priv->player_overlay, "get-child-position", G_CALLBACK(update_chat_undocked_position), self, 0);
 
     gchar** c;
     gchar** _c;
-    for (_c = c = peas_engine_get_loaded_plugins(main_app->plugins_engine); *c != NULL; c++)
+    for (_c = c = peas_engine_get_loaded_plugins(main_app->players_engine); *c != NULL; c++)
     {
-        PeasPluginInfo* info = peas_engine_get_plugin_info(main_app->plugins_engine, *c);
+        PeasPluginInfo* info = peas_engine_get_plugin_info(main_app->players_engine, *c);
 
-        if (peas_engine_provides_extension(main_app->plugins_engine, info, GT_TYPE_PLAYER_BACKEND))
-            plugin_loaded_cb(main_app->plugins_engine, info, self);
+        if (peas_engine_provides_extension(main_app->players_engine, info, GT_TYPE_PLAYER_BACKEND))
+            plugin_loaded_cb(main_app->players_engine, info, self);
     }
 
     g_strfreev(_c);
@@ -910,20 +1276,25 @@ gt_player_stop(GtPlayer* self)
 void
 gt_player_open_channel(GtPlayer* self, GtChannel* chan)
 {
+    g_assert(GT_IS_PLAYER(self));
+    g_assert(GT_IS_CHANNEL(chan));
+
     GtPlayerPrivate* priv = gt_player_get_instance_private(self);
-    gchar* name;
-    gchar* token;
-    gchar* sig;
-    GVariant* default_quality;
-    GAction* quality_action;
+    const gchar* id = gt_channel_get_id(chan);
+    g_autofree gchar* default_quality = NULL;
 
     g_object_set(self, "channel", chan, NULL);
 
     if (!priv->backend)
     {
         MESSAGE("Can't open channel, no backend loaded");
+
+        gtk_stack_set_visible_child(GTK_STACK(self), priv->empty_box);
+
         return;
     }
+
+    gtk_stack_set_visible_child(GTK_STACK(self), priv->player_box);
 
     gtk_label_set_label(GTK_LABEL(priv->buffer_label), _("Loading stream"));
 
@@ -932,47 +1303,30 @@ gt_player_open_channel(GtPlayer* self, GtChannel* chan)
     if (!gtk_revealer_get_child_revealed(GTK_REVEALER(priv->buffer_revealer)))
         gtk_revealer_set_reveal_child(GTK_REVEALER(priv->buffer_revealer), TRUE);
 
-    g_object_get(chan,
-                 "name", &name,
-                 NULL);
+    gt_chat_connect(GT_CHAT(priv->chat_view), chan);
 
-    gt_chat_connect(GT_CHAT(priv->chat_view), name);
+    default_quality = g_settings_get_string(main_app->settings, "default-quality");
 
-    default_quality = g_settings_get_value(main_app->settings, "default-quality");
-    priv->quality = g_settings_get_enum(main_app->settings, "default-quality");
+    g_object_set(self, "stream-quality", default_quality, NULL);
 
-    MESSAGEF("Opening stream '%s' with quality '%s'", name, g_variant_get_string(default_quality, NULL));
+    MESSAGEF("Opening stream '%s' with quality '%s'",
+        gt_channel_get_name(chan), priv->quality);
 
-    quality_action = g_action_map_lookup_action(G_ACTION_MAP(priv->action_group), "set_quality");
-    g_action_change_state(quality_action, default_quality);
-
-    priv->chat_settings = g_hash_table_lookup(main_app->chat_settings_table, name);
-    if (!priv->chat_settings)
+    priv->cur_channel_settings = g_hash_table_lookup(channel_settings_table, id);
+    if (!priv->cur_channel_settings)
     {
-        priv->chat_settings = gt_chat_view_settings_new();
-        g_hash_table_insert(main_app->chat_settings_table,
-                            g_strdup(name), priv->chat_settings);
+        priv->cur_channel_settings = gt_player_channel_settings_new();
+        g_hash_table_insert(channel_settings_table,
+            g_strdup(id), priv->cur_channel_settings);
     }
 
-    g_signal_handlers_block_by_func(self, chat_settings_changed_cb, self);
-    g_object_set(G_OBJECT(self), // These props need to be set before
-                 "chat-x", priv->chat_settings->x_pos,
-                 "chat-y", priv->chat_settings->y_pos,
-                 "chat-visible", priv->chat_settings->visible,
-                 "chat-opacity", priv->chat_settings->opacity,
-                 "docked-handle-position", priv->chat_settings->docked_handle_pos,
-                 NULL);
-    g_object_set(G_OBJECT(self),
-                 "chat-docked", priv->chat_settings->docked,
-                 "chat-width", priv->chat_settings->width,
-                 "chat-height", priv->chat_settings->height,
-                 "chat-dark-theme", priv->chat_settings->dark_theme,
-                 NULL);
-    g_signal_handlers_unblock_by_func(self, chat_settings_changed_cb, self);
+    g_object_notify_by_pspec(G_OBJECT(self), props[PROP_CHAT_VISIBLE]);
+    g_object_notify_by_pspec(G_OBJECT(self), props[PROP_CHAT_OPACITY]);
+    g_object_notify_by_pspec(G_OBJECT(self), props[PROP_DOCKED_HANDLE_POSITION]);
+    g_object_notify_by_pspec(G_OBJECT(self), props[PROP_CHAT_DOCKED]);
+    g_object_notify_by_pspec(G_OBJECT(self), props[PROP_CHAT_DARK_THEME]);
 
-    gt_twitch_all_streams_async(main_app->twitch, name, NULL, (GAsyncReadyCallback) streams_list_cb, self);
-
-    g_free(name);
+    update_docked(self);
 }
 
 void
@@ -980,9 +1334,12 @@ gt_player_close_channel(GtPlayer* self)
 {
     GtPlayerPrivate* priv = gt_player_get_instance_private(self);
 
-    g_object_set(self, "channel", NULL, NULL);
-
     gt_chat_disconnect(GT_CHAT(priv->chat_view));
+
+    g_object_set(self,
+        "channel", NULL,
+        "edit-chat", FALSE,
+        NULL);
 
     gt_player_stop(self);
 
@@ -994,22 +1351,21 @@ gt_player_close_channel(GtPlayer* self)
 }
 
 void
-gt_player_set_quality(GtPlayer* self, GtTwitchStreamQuality qual)
+gt_player_set_quality(GtPlayer* self, const gchar* quality)
 {
+    g_assert(GT_IS_PLAYER(self));
+    g_assert_nonnull(quality);
+
     GtPlayerPrivate* priv = gt_player_get_instance_private(self);
-    gchar* name;
-    GtTwitchStreamData* stream_data;
-    GtChannel* chan;
+    const gchar* name;
 
-    g_object_get(self, "channel", &chan, NULL);
-    g_object_get(chan, "name", &name, NULL);
+    name = gt_channel_get_name(priv->channel);
 
-    priv->quality = qual;
+    g_free(priv->quality);
+
+    priv->quality = g_strdup(quality);
 
     gt_twitch_all_streams_async(main_app->twitch, name, NULL, (GAsyncReadyCallback) streams_list_cb, self);
-
-    g_free(name);
-    g_object_unref(chan);
 }
 
 void
@@ -1019,4 +1375,61 @@ gt_player_toggle_muted(GtPlayer* self)
 
     g_object_get(self, "muted", &muted, NULL);
     g_object_set(self, "muted", !muted, NULL);
+}
+
+GtChannel*
+gt_player_get_channel(GtPlayer* self)
+{
+    g_assert(GT_IS_PLAYER(self));
+
+    GtPlayerPrivate* priv = gt_player_get_instance_private(self);
+
+    return priv->channel;
+}
+
+GList*
+gt_player_get_available_stream_qualities(GtPlayer* self)
+{
+    g_assert(GT_IS_PLAYER(self));
+
+    GtPlayerPrivate* priv = gt_player_get_instance_private(self);
+
+    return priv->stream_qualities;
+}
+
+gboolean
+gt_player_is_playing(GtPlayer* self)
+{
+    g_assert(GT_IS_PLAYER(self));
+
+    GtPlayerPrivate* priv = gt_player_get_instance_private(self);
+
+    return priv->playing;
+}
+
+GtPlayerChannelSettings*
+gt_player_channel_settings_new()
+{
+    GtPlayerChannelSettings* settings =  g_slice_new(GtPlayerChannelSettings);
+
+    settings->dark_theme = TRUE;
+    settings->opacity = 1.0;
+    settings->visible = TRUE;
+    settings->docked = TRUE;
+    settings->width = 0.2;
+    settings->height = 0.7;
+    settings->x_pos = 1.0;
+    settings->y_pos = 0.5;
+    settings->docked_handle_pos = 0.75;
+
+    return settings;
+}
+
+void
+gt_player_channel_settings_free(GtPlayerChannelSettings* settings)
+{
+    if (!settings)
+        return;
+
+    g_slice_free(GtPlayerChannelSettings, settings);
 }

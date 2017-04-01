@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+ This file is part of GNOME Twitch - 'Enjoy Twitch on your GNU/Linux desktop'
+ Copyright © 2017 Vincent Szolnoky <vinszent@vinszent.com>
+
+ GNOME Twitch is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+
+ GNOME Twitch is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License
+ along with GNOME Twitch. If not, see <http://www.gnu.org/licenses/>.
+-->
+
+<interface domain="GnomeTwitch">
+  <template class="GtContainerView" parent="GtkBox">
+    <property name="orientation">vertical</property>
+    <child>
+      <object class="GtkSearchBar" id="search_bar">
+        <property name="visible">True</property>
+        <child>
+          <object class="GtkBox" id="search_box">
+            <property name="visible">true</property>
+            <property name="width-request">300</property>
+            <style>
+              <class name="linked"/>
+            </style>
+            <child>
+              <object class="GtkSearchEntry" id="search_entry">
+                <property name="visible">true</property>
+              </object>
+              <packing>
+                <property name="fill">true</property>
+                <property name="expand">true</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkMenuButton" id="menu_button">
+                <property name="visible">false</property>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="GtkStack" id="container_stack">
+        <property name="visible">true</property>
+        <property name="transition-type">crossfade</property>
+      </object>
+    </child>
+  </template>
+</interface>

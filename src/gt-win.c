@@ -1,14 +1,31 @@
+/*
+ *  This file is part of GNOME Twitch - 'Enjoy Twitch on your GNU/Linux desktop'
+ *  Copyright © 2017 Vincent Szolnoky <vinszent@vinszent.com>
+ *
+ *  GNOME Twitch is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  GNOME Twitch is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with GNOME Twitch. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include "gt-win.h"
-#include <gdk/gdkx.h>
 #include <glib/gprintf.h>
 #include <glib/gi18n.h>
 #include "gt-twitch.h"
 #include "gt-player.h"
 #include "gt-player-header-bar.h"
 #include "gt-browse-header-bar.h"
-#include "gt-channels-view.h"
-#include "gt-games-view.h"
-#include "gt-follows-view.h"
+#include "gt-channel-container-view.h"
+#include "gt-followed-container-view.h"
+#include "gt-game-container-view.h"
 #include "gt-settings-dlg.h"
 #include "gt-twitch-login-dlg.h"
 #include "gt-twitch-channel-info-dlg.h"
@@ -21,8 +38,6 @@
 #define TAG "GtWin"
 #include "gnome-twitch/gt-log.h"
 
-#define MAIN_VISIBLE_CHILD gtk_stack_get_visible_child(GTK_STACK(priv->main_stack))
-
 typedef struct
 {
     gchar* msg;
@@ -33,9 +48,6 @@ typedef struct
 typedef struct
 {
     GtkWidget* main_stack;
-    GtkWidget* channels_view;
-    GtkWidget* games_view;
-    GtkWidget* follows_view;
     GtkWidget* header_stack;
     GtkWidget* browse_stack;
     GtkWidget* player_header_bar;
@@ -59,6 +71,9 @@ typedef struct
     GtSettingsDlg* settings_dlg;
 
     gboolean fullscreen;
+
+    GBinding* search_binding;
+    GBinding* back_binding;
 } GtWinPrivate;
 
 G_DEFINE_TYPE_WITH_PRIVATE(GtWin, gt_win, GTK_TYPE_APPLICATION_WINDOW)
@@ -66,9 +81,6 @@ G_DEFINE_TYPE_WITH_PRIVATE(GtWin, gt_win, GTK_TYPE_APPLICATION_WINDOW)
 enum
 {
     PROP_0,
-    PROP_CHANNELS_VIEW,
-    PROP_GAMES_VIEW,
-    PROP_VISIBLE_VIEW,
     PROP_FULLSCREEN,
     NUM_PROPS
 };
@@ -82,6 +94,36 @@ gt_win_new(GtApp* app)
                         "application", app,
                         "show-menubar", FALSE,
                         NULL);
+}
+
+static void
+container_view_changed_cb(GObject* source,
+    GParamSpec* pspec, gpointer udata)
+{
+    g_assert(GT_IS_WIN(udata));
+
+    GtWin* self = GT_WIN(udata);
+    GtWinPrivate* priv = gt_win_get_instance_private(self);
+
+    GtkWidget* current_view = gtk_stack_get_visible_child(GTK_STACK(priv->browse_stack));
+
+    g_assert(GT_IS_CONTAINER_VIEW(current_view));
+
+    g_clear_object(&priv->back_binding);
+    g_clear_object(&priv->search_binding);
+
+    g_object_set(priv->browse_header_bar,
+        "search-active",
+        gt_container_view_get_search_active(GT_CONTAINER_VIEW(current_view)),
+        "show-back-button",
+        gt_container_view_get_show_back_button(GT_CONTAINER_VIEW(current_view)),
+        NULL);
+
+    priv->search_binding = g_object_bind_property(priv->browse_header_bar, "search-active",
+        current_view, "search-active", G_BINDING_BIDIRECTIONAL | G_BINDING_SYNC_CREATE);
+
+    priv->back_binding = g_object_bind_property(current_view, "show-back-button",
+        priv->browse_header_bar, "show-back-button", G_BINDING_BIDIRECTIONAL | G_BINDING_SYNC_CREATE);
 }
 
 static void
@@ -103,9 +145,9 @@ show_about_cb(GSimpleAction* action,
                  "program-name", "GNOME Twitch",
                  "authors", &authors,
                  "license-type", GTK_LICENSE_GPL_3_0,
-                 "copyright", "Copyright © 2015 Vincent Szolnoky",
+                 "copyright", "Copyright © 2017 Vincent Szolnoky",
                  "comments", _("Enjoy Twitch on your GNU/Linux desktop"),
-                 "logo-icon-name", "gnome-twitch",
+                 "logo-icon-name", "com.vinszent.GnomeTwitch",
                  "website", "https://github.com/vinszent/gnome-twitch",
                  "website-label", "GitHub",
                  // Translators: Put your details here :)
@@ -166,23 +208,28 @@ refresh_login_cb(GtkInfoBar* info_bar,
 
 static void
 show_error_dialogue_cb(GtkInfoBar* info_bar,
-                       gint res,
-                       gchar** udata)
+    gint res, gchar** udata)
 {
     GtkBuilder* builder = gtk_builder_new_from_resource("/com/vinszent/GnomeTwitch/ui/gt-error-dlg.ui");
     GtkWidget* dlg = GTK_WIDGET(gtk_builder_get_object(builder, "dlg"));
     GtkTextView* details_text_view = GTK_TEXT_VIEW(gtk_builder_get_object(builder, "details_text_view"));
+    GtkLabel* sub_label = GTK_LABEL(gtk_builder_get_object(builder, "error_label"));
+    GtkWidget* close_button = GTK_WIDGET(gtk_builder_get_object(builder, "close_button"));
+    GtkWidget* report_button = GTK_WIDGET(gtk_builder_get_object(builder, "report_button"));
+    g_autofree gchar* info_text = NULL;
 
     if (res != GTK_RESPONSE_OK) goto cleanup;
 
     gtk_text_buffer_set_text(gtk_text_view_get_buffer(details_text_view),
                              *(udata+1), -1);
 
-    g_object_set(dlg,
-                 "text", _("Something went wrong"),
-                 "secondary-text", *udata,
-                 NULL);
-    g_signal_connect(dlg, "response", G_CALLBACK(gtk_widget_destroy), NULL);
+    info_text = g_strdup_printf(_("<b>Error message:</b> %s"), *udata);
+
+    gtk_label_set_label(sub_label, info_text);
+
+    g_signal_connect_swapped(close_button, "clicked", G_CALLBACK(gtk_widget_destroy), dlg);
+
+    //TODO: Hook up report button
 
     gtk_window_set_transient_for(GTK_WINDOW(dlg), GTK_WINDOW(GT_WIN_ACTIVE));
     gtk_widget_show(dlg);
@@ -283,16 +330,8 @@ show_twitch_login_cb(GSimpleAction* action,
 {
     GtWin* self = GT_WIN(udata);
     GtWinPrivate* priv = gt_win_get_instance_private(self);
-    gchar* oauth_token;
-    gchar* user_name;
 
-    g_object_get(main_app,
-                 "oauth-token", &oauth_token,
-                 "user-name", &user_name,
-                 NULL);
-
-    if (oauth_token && user_name &&
-        strlen(oauth_token) > 0 && strlen(user_name) > 0)
+    if (gt_app_is_logged_in(main_app))
     {
         gt_win_ask_question(self, _("Already logged into Twitch, refresh login?"),
                             G_CALLBACK(refresh_login_cb), self);
@@ -329,42 +368,36 @@ show_channel_info_cb(GSimpleAction* action,
     g_object_unref(channel);
 }
 
-
 static void
-refresh_view_cb(GSimpleAction* action,
-                GVariant* arg,
-                gpointer udata)
+go_back_cb(GSimpleAction* action,
+    GVariant* arg, gpointer udata)
 {
+    g_assert(GT_IS_WIN(udata));
+
     GtWin* self = GT_WIN(udata);
     GtWinPrivate* priv = gt_win_get_instance_private(self);
-    GtkWidget* visible_child = gtk_stack_get_visible_child(GTK_STACK(priv->browse_stack));
 
-    if (visible_child == priv->channels_view)
-        gt_channels_view_refresh(GT_CHANNELS_VIEW(priv->channels_view));
-    else if (visible_child == priv->games_view)
-        gt_games_view_refresh(GT_GAMES_VIEW(priv->games_view));
-    else if (visible_child == priv->follows_view)
-    {
-        //TODO: Quick hack, turn this into a proper refresh function
-        if (gt_app_credentials_valid(main_app))
-            gt_follows_manager_load_from_twitch(main_app->fav_mgr);
-        else
-            gt_follows_manager_load_from_file(main_app->fav_mgr);
-    }
+    GtkWidget* current_view = gtk_stack_get_visible_child(GTK_STACK(priv->browse_stack));
+
+    g_assert(GT_IS_CONTAINER_VIEW(current_view));
+
+    gt_container_view_go_back(GT_CONTAINER_VIEW(current_view));
 }
 
 static void
-show_view_default_cb(GSimpleAction* action,
-                     GVariant* arg,
-                     gpointer udata)
+refresh_cb(GSimpleAction* action,
+    GVariant* arg, gpointer udata)
 {
+    g_assert(GT_IS_WIN(udata));
+
     GtWin* self = GT_WIN(udata);
     GtWinPrivate* priv = gt_win_get_instance_private(self);
 
-    if (gtk_stack_get_visible_child(GTK_STACK(priv->browse_stack)) == priv->channels_view)
-        gt_channels_view_show_type(GT_CHANNELS_VIEW(priv->channels_view), GT_CHANNELS_CONTAINER_TYPE_TOP);
-    else if (gtk_stack_get_visible_child(GTK_STACK(priv->browse_stack)) == priv->games_view)
-        gt_games_view_show_type(GT_GAMES_VIEW(priv->games_view), GT_GAMES_CONTAINER_TYPE_TOP);
+    GtkWidget* current_view = gtk_stack_get_visible_child(GTK_STACK(priv->browse_stack));
+
+    g_assert(GT_IS_CONTAINER_VIEW(current_view));
+
+    gt_container_view_refresh(GT_CONTAINER_VIEW(current_view));
 }
 
 static gboolean
@@ -375,12 +408,13 @@ key_press_cb(GtkWidget* widget,
     GtWin* self = GT_WIN(udata);
     GtWinPrivate* priv = gt_win_get_instance_private(self);
     GdkModifierType modifiers = gtk_accelerator_get_default_mod_mask();
+    GtkWidget* visible_child = gtk_stack_get_visible_child(GTK_STACK(priv->main_stack));
     gboolean playing;
-    GAction *action;
+    GAction *action = NULL;
 
     g_object_get(self->player, "playing", &playing, NULL);
 
-    if (MAIN_VISIBLE_CHILD == GTK_WIDGET(self->player))
+    if (visible_child == GTK_WIDGET(self->player))
     {
         if (evt->keyval == GDK_KEY_Escape)
         {
@@ -405,14 +439,14 @@ key_press_cb(GtkWidget* widget,
             gt_browse_header_bar_toggle_search(GT_BROWSE_HEADER_BAR(priv->browse_header_bar));
         else
         {
-            GtkWidget* view = gtk_stack_get_visible_child(GTK_STACK(priv->browse_stack));
+            /* GtkWidget* view = gtk_stack_get_visible_child(GTK_STACK(priv->browse_stack)); */
 
-            if (view == priv->channels_view)
-                gt_channels_view_handle_event(GT_CHANNELS_VIEW(priv->channels_view), (GdkEvent*) evt);
-            else if (view == priv->games_view)
-                gt_games_view_handle_event(GT_GAMES_VIEW(priv->games_view), (GdkEvent*) evt);
-            else if (view == priv->follows_view)
-                gt_follows_view_handle_event(GT_FOLLOWS_VIEW(priv->follows_view), (GdkEvent* )evt);
+            /* if (view == priv->channels_view) */
+            /*     gt_channels_view_handle_event(GT_CHANNELS_VIEW(priv->channels_view), (GdkEvent*) evt); */
+            /* else if (view == priv->games_view) */
+            /*     gt_games_view_handle_event(GT_GAMES_VIEW(priv->games_view), (GdkEvent*) evt); */
+            /* else if (view == priv->follows_view) */
+            /*     gt_follows_view_handle_event(GT_FOLLOWS_VIEW(priv->follows_view), (GdkEvent* )evt); */
         }
     }
 
@@ -466,8 +500,8 @@ update_fullscreen(GtWin* self)
 
 static GActionEntry win_actions[] =
 {
-    {"refresh_view", refresh_view_cb, NULL, NULL, NULL},
-    {"show_view_default", show_view_default_cb, NULL, NULL, NULL},
+    {"refresh", refresh_cb, NULL, NULL, NULL},
+    {"go_back", go_back_cb, NULL, NULL, NULL},
     {"show_about", show_about_cb, NULL, NULL, NULL},
     {"show_settings", show_settings_cb, NULL, NULL},
     {"show_settings_with_view", NULL, "s", "'general'", show_settings_cb},
@@ -498,17 +532,8 @@ get_property (GObject*    obj,
 
     switch (prop)
     {
-        case PROP_CHANNELS_VIEW:
-            g_value_set_object(val, priv->channels_view);
-            break;
-        case PROP_GAMES_VIEW:
-            g_value_set_object(val, priv->games_view);
-            break;
         case PROP_FULLSCREEN:
             g_value_set_boolean(val, priv->fullscreen);
-            break;
-        case PROP_VISIBLE_VIEW:
-            g_value_set_object(val, gtk_stack_get_visible_child(GTK_STACK(priv->browse_stack)));
             break;
         default:
             G_OBJECT_WARN_INVALID_PROPERTY_ID(obj, prop, pspec);
@@ -526,9 +551,6 @@ set_property(GObject*      obj,
 
     switch (prop)
     {
-        case PROP_VISIBLE_VIEW:
-            // Do nothing
-            break;
         case PROP_FULLSCREEN:
             priv->fullscreen = g_value_get_boolean(val);
             update_fullscreen(self);
@@ -539,6 +561,20 @@ set_property(GObject*      obj,
 }
 
 static void
+constructed(GObject* obj)
+{
+    GtWin* self = GT_WIN(obj);
+    GtWinPrivate* priv = gt_win_get_instance_private(self);
+
+    g_signal_connect(priv->browse_stack, "notify::visible-child",
+        G_CALLBACK(container_view_changed_cb), self);
+
+    container_view_changed_cb(NULL, NULL, self);
+
+    G_OBJECT_CLASS(gt_win_parent_class)->constructed(obj);
+}
+
+static void
 gt_win_class_init(GtWinClass* klass)
 {
     GObjectClass* object_class = G_OBJECT_CLASS(klass);
@@ -546,22 +582,8 @@ gt_win_class_init(GtWinClass* klass)
     object_class->finalize = finalize;
     object_class->get_property = get_property;
     object_class->set_property = set_property;
+    object_class->constructed = constructed;
 
-    props[PROP_CHANNELS_VIEW] = g_param_spec_object("channels-view",
-                                                    "Channels View",
-                                                    "Channels View",
-                                                    GT_TYPE_CHANNELS_VIEW,
-                                                    G_PARAM_READABLE);
-    props[PROP_GAMES_VIEW] = g_param_spec_object("games-view",
-                                                 "Games View",
-                                                 "Games View",
-                                                 GT_TYPE_GAMES_VIEW,
-                                                 G_PARAM_READABLE);
-    props[PROP_VISIBLE_VIEW] = g_param_spec_object("visible-view",
-                                                   "Visible View",
-                                                   "Visible View",
-                                                   GTK_TYPE_WIDGET,
-                                                   G_PARAM_READWRITE);
     props[PROP_FULLSCREEN] = g_param_spec_boolean("fullscreen",
                                                   "Fullscreen",
                                                   "Whether window is fullscreen",
@@ -575,15 +597,12 @@ gt_win_class_init(GtWinClass* klass)
     gtk_widget_class_set_template_from_resource(GTK_WIDGET_CLASS(klass),
                                                 "/com/vinszent/GnomeTwitch/ui/gt-win.ui");
     gtk_widget_class_bind_template_child_private(GTK_WIDGET_CLASS(klass), GtWin, main_stack);
-    gtk_widget_class_bind_template_child_private(GTK_WIDGET_CLASS(klass), GtWin, channels_view);
-    gtk_widget_class_bind_template_child_private(GTK_WIDGET_CLASS(klass), GtWin, games_view);
     gtk_widget_class_bind_template_child(GTK_WIDGET_CLASS(klass), GtWin, player);
     gtk_widget_class_bind_template_child_private(GTK_WIDGET_CLASS(klass), GtWin, header_stack);
     gtk_widget_class_bind_template_child_private(GTK_WIDGET_CLASS(klass), GtWin, player_header_bar);
     gtk_widget_class_bind_template_child_private(GTK_WIDGET_CLASS(klass), GtWin, browse_header_bar);
     gtk_widget_class_bind_template_child_private(GTK_WIDGET_CLASS(klass), GtWin, browse_stack);
     gtk_widget_class_bind_template_child_private(GTK_WIDGET_CLASS(klass), GtWin, browse_stack_switcher);
-    gtk_widget_class_bind_template_child_private(GTK_WIDGET_CLASS(klass), GtWin, follows_view);
     gtk_widget_class_bind_template_child_private(GTK_WIDGET_CLASS(klass), GtWin, info_revealer);
     gtk_widget_class_bind_template_child_private(GTK_WIDGET_CLASS(klass), GtWin, info_label);
     gtk_widget_class_bind_template_child_private(GTK_WIDGET_CLASS(klass), GtWin, info_bar);
@@ -592,6 +611,14 @@ gt_win_class_init(GtWinClass* klass)
     gtk_widget_class_bind_template_child_private(GTK_WIDGET_CLASS(klass), GtWin, info_bar_ok_button);
     gtk_widget_class_bind_template_child_private(GTK_WIDGET_CLASS(klass), GtWin, info_bar_details_button);
     gtk_widget_class_bind_template_child_private(GTK_WIDGET_CLASS(klass), GtWin, info_bar_close_button);
+
+    GT_TYPE_PLAYER; // Hack to load GtPlayer into the symbols table
+    GT_TYPE_PLAYER_HEADER_BAR;
+    GT_TYPE_BROWSE_HEADER_BAR;
+    GT_TYPE_CHANNEL_CONTAINER_VIEW;
+    GT_TYPE_FOLLOWED_CONTAINER_VIEW;
+    GT_TYPE_GAME_CONTAINER_VIEW;
+    GT_TYPE_CHAT;
 }
 
 static void
@@ -599,14 +626,6 @@ gt_win_init(GtWin* self)
 {
     GtWinPrivate* priv = gt_win_get_instance_private(self);
     GPropertyAction* action;
-
-    GT_TYPE_PLAYER; // Hack to load GtPlayer into the symbols table
-    GT_TYPE_PLAYER_HEADER_BAR;
-    GT_TYPE_BROWSE_HEADER_BAR;
-    GT_TYPE_CHANNELS_VIEW;
-    GT_TYPE_GAMES_VIEW;
-    GT_TYPE_FOLLOWS_VIEW;
-    GT_TYPE_CHAT;
 
     gtk_window_set_application(GTK_WINDOW(self), GTK_APPLICATION(main_app));
 
@@ -620,11 +639,9 @@ gt_win_init(GtWin* self)
                                 g_settings_get_int(main_app->settings, "window-width"),
                                 g_settings_get_int(main_app->settings, "window-height"));
 
-    gtk_window_set_default_icon_name("gnome-twitch");
+    gtk_window_set_default_icon_name("com.vinszent.GnomeTwitch");
 
-    g_object_bind_property(priv->browse_stack, "visible-child",
-                           self, "visible-view",
-                           G_BINDING_DEFAULT | G_BINDING_SYNC_CREATE);
+    gtk_window_set_icon_name(GTK_WINDOW(self), "com.vinszent.GnomeTwitch");
 
     GdkScreen* screen = gdk_screen_get_default();
     GtkCssProvider* css = gtk_css_provider_new();
@@ -651,68 +668,36 @@ gt_win_init(GtWin* self)
     g_object_unref(window_group);
 }
 
-//TODO: Make this action
 void
 gt_win_open_channel(GtWin* self, GtChannel* chan)
 {
+    g_assert(GT_IS_WIN(self));
+    g_assert(GT_IS_CHANNEL(chan));
+
     GtWinPrivate* priv = gt_win_get_instance_private(self);
 
-    gt_player_open_channel(GT_PLAYER(self->player), chan);
+    if (gt_player_is_playing(self->player))
+        gt_player_close_channel(self->player);
 
-    gtk_stack_set_visible_child_name(GTK_STACK(priv->main_stack),
-                                     "player");
-    gtk_stack_set_visible_child_name(GTK_STACK(priv->header_stack),
-                                     "player");
-}
+    if (gt_channel_is_online(chan))
+    {
+        gt_player_open_channel(GT_PLAYER(self->player), chan);
 
-//TODO: Make these actions
-void
-gt_win_browse_view(GtWin* self)
-{
-    GtWinPrivate* priv = gt_win_get_instance_private(self);
+        gtk_stack_set_visible_child_name(GTK_STACK(priv->main_stack),
+            "player");
+        gtk_stack_set_visible_child_name(GTK_STACK(priv->header_stack),
+            "player");
+    }
+    else
+    {
+        gt_win_show_info_message(self, _("Unable to open channel %s because it's not online"),
+            gt_channel_get_name(chan));
 
-    gtk_stack_set_visible_child_name(GTK_STACK(priv->header_stack),
-                                     "browse");
-    gtk_stack_set_visible_child_name(GTK_STACK(priv->main_stack),
-                                     "browse");
-}
-
-void
-gt_win_browse_channels_view(GtWin* self)
-{
-    GtWinPrivate* priv = gt_win_get_instance_private(self);
-
-    gt_win_browse_view(self);
-
-    gtk_stack_set_visible_child_name(GTK_STACK(priv->browse_stack),
-                                     "channels");
-}
-
-void
-gt_win_browse_games_view(GtWin* self)
-{
-    GtWinPrivate* priv = gt_win_get_instance_private(self);
-
-    gt_win_browse_view(self);
-
-    gtk_stack_set_visible_child_name(GTK_STACK(priv->browse_stack),
-                                     "games");
-}
-
-GtChannelsView*
-gt_win_get_channels_view(GtWin* self)
-{
-    GtWinPrivate* priv = gt_win_get_instance_private(self);
-
-    return GT_CHANNELS_VIEW(priv->channels_view);
-}
-
-GtGamesView*
-gt_win_get_games_view(GtWin* self)
-{
-    GtWinPrivate* priv = gt_win_get_instance_private(self);
-
-    return GT_GAMES_VIEW(priv->games_view);
+        gtk_stack_set_visible_child_name(GTK_STACK(priv->main_stack),
+            "browse");
+        gtk_stack_set_visible_child_name(GTK_STACK(priv->header_stack),
+            "browse");
+    }
 }
 
 gboolean
@@ -732,12 +717,17 @@ gt_win_toggle_fullscreen(GtWin* self)
 }
 
 void
-gt_win_show_info_message(GtWin* self, const gchar* msg)
+gt_win_show_info_message(GtWin* self, const gchar* msg_fmt, ...)
 {
+    RETURN_IF_FAIL(GT_IS_WIN(self));
+
     GtWinPrivate* priv = gt_win_get_instance_private(self);
     QueuedInfoData* data = g_new0(QueuedInfoData, 1);
+    va_list fmt_list;
 
-    data->msg = g_strdup(msg);
+    va_start(fmt_list, msg_fmt);
+    data->msg = g_strdup_vprintf(msg_fmt, fmt_list);
+    va_end(fmt_list);
 
     g_queue_push_tail(priv->info_queue, data);
 
@@ -746,19 +736,41 @@ gt_win_show_info_message(GtWin* self, const gchar* msg)
 }
 
 void
-gt_win_show_error_message(GtWin* self, const gchar* secondary, const gchar* details)
+gt_win_show_error_message(GtWin* self, const gchar* secondary, const gchar* details_fmt, ...)
 {
-    GtWinPrivate* priv = gt_win_get_instance_private(self);
-    QueuedInfoData* data = g_new(QueuedInfoData, 1);
+    g_assert(GT_IS_WIN(self));
+
     gchar** udata = g_malloc(sizeof(gchar*)*3);
     // Translators: Please keep the markup tags
     gchar* msg = g_strdup_printf(_("<b>Something went wrong:</b> %s."), secondary);
+    va_list details_list;
 
     *udata = g_strdup(secondary);
-    *(udata+1) = g_strdup(details);
+
+    va_start(details_list, details_fmt);
+    *(udata+1) = g_strdup_vprintf(details_fmt, details_list);
+    va_end(details_list);
     *(udata+2) = NULL;
 
     gt_win_ask_question(self, msg, G_CALLBACK(show_error_dialogue_cb), udata);
+}
+
+void
+gt_win_show_error_dialogue(GtWin* self, const gchar* secondary, const gchar* details_fmt, ...)
+{
+    g_assert(GT_IS_WIN(self));
+
+    gchar** udata = g_malloc(sizeof(gchar*)*3);
+    va_list details_list;
+
+    *udata = g_strdup(secondary);
+
+    va_start(details_list, details_fmt);
+    *(udata+1) = g_strdup_vprintf(details_fmt, details_list);
+    va_end(details_list);
+    *(udata+2) = NULL;
+
+    show_error_dialogue_cb(NULL, GTK_RESPONSE_OK, udata);
 }
 
 void

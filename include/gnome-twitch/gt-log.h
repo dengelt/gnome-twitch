@@ -1,3 +1,21 @@
+/*
+ *  This file is part of GNOME Twitch - 'Enjoy Twitch on your GNU/Linux desktop'
+ *  Copyright © 2017 Vincent Szolnoky <vinszent@vinszent.com>
+ *
+ *  GNOME Twitch is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  GNOME Twitch is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with GNOME Twitch. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #ifndef _GT_LOG_H
 #define _GT_LOG_H
 
@@ -30,24 +48,44 @@ typedef enum
 #ifndef TAG
 #error Tag not defined
 #else
-#define LOG(lvl, msg) g_log(NULL, (GLogLevelFlags) lvl, "{%s} %s", TAG, msg)
-#define LOGF(lvl, fmt, ...) g_log(NULL, (GLogLevelFlags) lvl, "{%s} " fmt, TAG, __VA_ARGS__)
-#define FATAL(msg) LOG(GT_LOG_LEVEL_WARNING, msg)
+#define LOG(lvl, msg, ...) g_log(NULL, (GLogLevelFlags) lvl, "{%s:%d} %s", TAG, __LINE__, msg, ##__VA_ARGS__)
+#define LOGF(lvl, fmt, ...) g_log(NULL, (GLogLevelFlags) lvl, "{%s:%d} " fmt, TAG, __LINE__, ##__VA_ARGS__)
+#define FATAL(msg, ...) LOGF(GT_LOG_LEVEL_WARNING, msg, ##__VA_ARGS__)
 #define FATALF(fmt, ...) LOGF(GT_LOG_LEVEL_WARNING, fmt, __VA_ARGS__)
-#define ERROR(msg) LOG(GT_LOG_LEVEL_WARNING, msg)
-#define ERRORF(fmt, ...) LOGF(GT_LOG_LEVEL_WARNING, fmt, __VA_ARGS__)
-#define CRITICAL(msg) LOG(GT_LOG_LEVEL_WARNING, msg)
-#define CRITICALF(fmt, ...) LOGF(GT_LOG_LEVEL_WARNING, fmt, __VA_ARGS__)
-#define WARNING(msg) LOG(GT_LOG_LEVEL_WARNING, msg)
+#define ERROR(msg, ...) LOGF(GT_LOG_LEVEL_ERROR, msg, ##__VA_ARGS__)
+#define ERRORF(fmt, ...) LOGF(GT_LOG_LEVEL_ERROR, fmt, __VA_ARGS__)
+#define CRITICAL(msg, ...) LOGF(GT_LOG_LEVEL_CRITICAL, msg, ##__VA_ARGS__)
+#define CRITICALF(fmt, ...) LOGF(GT_LOG_LEVEL_CRITICAL, fmt, __VA_ARGS__)
+#define WARNING(msg, ...) LOGF(GT_LOG_LEVEL_WARNING, msg, ##__VA_ARGS__)
 #define WARNINGF(fmt, ...) LOGF(GT_LOG_LEVEL_WARNING, fmt, __VA_ARGS__)
-#define MESSAGE(msg) LOG(GT_LOG_LEVEL_MESSAGE, msg)
+#define MESSAGE(msg, ...) LOGF(GT_LOG_LEVEL_MESSAGE, msg, ##__VA_ARGS__)
 #define MESSAGEF(fmt, ...) LOGF(GT_LOG_LEVEL_MESSAGE, fmt, __VA_ARGS__)
-#define INFO(msg) LOG(GT_LOG_LEVEL_INFO, msg)
+#define INFO(msg, ...) LOGF(GT_LOG_LEVEL_INFO, msg, ##__VA_ARGS__)
 #define INFOF(fmt, ...) LOGF(GT_LOG_LEVEL_INFO, fmt, __VA_ARGS__)
-#define DEBUG(msg) LOG(GT_LOG_LEVEL_DEBUG, msg)
+#define DEBUG(msg, ...) LOGF(GT_LOG_LEVEL_DEBUG, msg, ##__VA_ARGS__)
 #define DEBUGF(fmt, ...) LOGF(GT_LOG_LEVEL_DEBUG, fmt, __VA_ARGS__)
-#define TRACE(msg) LOG(GT_LOG_LEVEL_TRACE, msg)
+#define TRACE(msg, ...) LOGF(GT_LOG_LEVEL_TRACE, msg, ##__VA_ARGS__)
 #define TRACEF(fmt, ...) LOGF(GT_LOG_LEVEL_TRACE, fmt, __VA_ARGS__)
+
+
+#define RETURN_IF_FAIL(expr)                                \
+    if (!(expr))                                            \
+    {                                                       \
+        CRITICAL("Expression '%s' should be TRUE", #expr);  \
+        return;                                             \
+    }
+#define RETURN_VAL_IF_FAIL(expr, val)                       \
+    if (!(expr))                                            \
+    {                                                       \
+        CRITICAL("Expression '%s' should be TRUE", #expr);  \
+        return val;                                         \
+    }
+#define RETURN_IF_REACHED()                             \
+    CRITICAL("This expression should not be reached");  \
+    return;
+#define RETURN_VAL_IF_REACHED(val)                      \
+    CRITICAL("This expression should not be reached");  \
+    return val;
 #endif
 
 #endif

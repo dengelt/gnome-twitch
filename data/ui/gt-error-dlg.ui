@@ -1,23 +1,92 @@
 <?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+ This file is part of GNOME Twitch - 'Enjoy Twitch on your GNU/Linux desktop'
+ Copyright © 2017 Vincent Szolnoky <vinszent@vinszent.com>
+
+ GNOME Twitch is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+
+ GNOME Twitch is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License
+ along with GNOME Twitch. If not, see <http://www.gnu.org/licenses/>.
+-->
+
 <interface domain="gnome-twitch">
-  <object class="GtkMessageDialog" id="dlg">
+  <object class="GtkDialog" id="dlg">
     <property name="modal">True</property>
-    <property name="buttons">close</property>
     <property name="default-width">490</property>
     <property name="default-height">295</property>
     <property name="resizable">False</property>
-    <child internal-child="message_area">
+    <property name="use-header-bar">1</property>
+    <property name="title" translatable="yes">Something went wrong</property>
+    <style>
+      <class name="gt-error-dlg"/>
+    </style>
+    <child internal-child="headerbar">
+      <object class="GtkHeaderBar">
+        <property name="show-close-button">false</property>
+        <child>
+          <object class="GtkButton" id="report_button">
+            <property name="visible">false</property>
+            <property name="label" translatable="yes">Report error</property>
+            <property name="can-default">true</property>
+            <property name="has-default">true</property>
+            <style>
+              <class name="suggested-action"/>
+            </style>
+          </object>
+          <packing>
+            <property name="pack-type">end</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkButton" id="close_button">
+            <property name="visible">true</property>
+            <property name="label" translatable="yes">Close</property>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child internal-child="vbox">
       <object class="GtkBox">
         <property name="height-request">100</property>
+        <property name="width-request">400</property>
+        <property name="orientation">vertical</property>
+        <property name="margin">7</property>
+        <child>
+          <object class="GtkLabel" id="error_label">
+            <property name="visible">true</property>
+            <property name="halign">start</property>
+            <property name="use-markup">true</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkLabel">
+            <property name="visible">true</property>
+            <property name="halign">start</property>
+            <property name="use-markup">true</property>
+            <property name="label" translatable="yes">&lt;b&gt;Details:&lt;/b&gt; </property>
+          </object>
+        </child>
         <child>
           <object class="GtkScrolledWindow">
             <property name="visible">True</property>
             <property name="min-content-height">100</property>
+            <property name="max-content-width">400</property>
             <property name="hscrollbar-policy">never</property>
+            <property name="vexpand">true</property>
             <child>
               <object class="GtkTextView" id="details_text_view">
                 <property name="visible">True</property>
-                <property name="wrap-mode">word</property>
+                <property name="wrap-mode">char</property>
+                <property name="monospace">true</property>
               </object>
             </child>
           </object>
