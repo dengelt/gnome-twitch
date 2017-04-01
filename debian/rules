@@ -13,10 +13,8 @@ override_dh_auto_configure:
 	mkdir build && meson --buildtype plain --prefix /usr \
 	               -Ddo-post-install=false \
 	               -Db_lundef=false \
-	               -Dwith-player-mpv-opengl=true \
-	               -Dwith-player-gstreamer-clutter=true \
-	               -Dwith-player-gstreamer-cairo=true \
-	               -Dwith-player-gstreamer-opengl=true . build
+	               -Dbuild-player-backends=mpv-opengl,gstreamer-clutter,gstreamer-cairo,gstreamer-opengl \
+	               . build
 
 override_dh_auto_build:
 	$(MAKE) -C build all
