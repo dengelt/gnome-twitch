@@ -1,3 +1,10 @@
+gnome-twitch (0.4.0-1) UNRELEASED; urgency=medium
+
+  * New upstream release (0.4.0)
+  * Add appdata changelog entry for 0.4.0
+
+ -- Tim Dengel <tim.dengel.debian@gmail.com>  Sat, 01 Apr 2017 19:23:22 +0200
+
 gnome-twitch (0.3.1-1) unstable; urgency=medium
 
   * New upstream release (0.3.1)
