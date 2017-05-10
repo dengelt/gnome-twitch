@@ -15,9 +15,13 @@ Copyright: 2016 Radek Sprta <mail@radeksprta.eu>
 License: GPL-3.0+
 
 Files: po/de.po
-Copyright: 2015 Philipp Fent <philipp@fent.de>
+Copyright: 2015, 2017 Philipp Fent <philipp@fent.de>
            2016 Kordian Bruck <k@bruck.me>
            2016 Tim Dengel <tim.dengel.debian@gmail.com>
+License: GPL-3.0+
+
+Files: po/es.po
+Copyright: 2016-2017 Holman Alejandro Calderón Villamizar <halecalderon@gmail.com>
 License: GPL-3.0+
 
 Files: po/fr.po
@@ -29,23 +33,23 @@ Copyright: 2015-2016 Gergő Rubint <rubintgergo@gmail.com>
 License: GPL-3.0+
 
 Files: po/nl.po
-Copyright: 2016 Naessens Arne <arnenaessens@hotmail.com>
+Copyright: 2016-2017 Naessens Arne <arnenaessens@hotmail.com>
 License: GPL-3.0+
 
 Files: po/pl.po
-Copyright: 2015-2016 Piotr Drąg <piotrdrag@gmail.com>
+Copyright: 2015-2017 Piotr Drąg <piotrdrag@gmail.com>
 License: GPL-3.0+
 
 Files: po/pt.po
-Copyright: 2016 Bruno Guerreiro <american.jesus.pt@gmail.com>
+Copyright: 2016-2017 Bruno Guerreiro <american.jesus.pt@gmail.com>
 License: GPL-3.0+
 
 Files: po/ru.po
-Copyright: 2015-2016 Sunderland93 <samoilov.lex@gmail.com>
+Copyright: 2015-2017 Sunderland93 <samoilov.lex@gmail.com>
 License: GPL-3.0+
 
 Files: po/sr.po
-Copyright: 2015-2016 Марко М. Костић (Marko M. Kostić) <marko.m.kostic@gmail.com>
+Copyright: 2015-2017 Марко М. Костић (Marko M. Kostić) <marko.m.kostic@gmail.com>
 License: GPL-3.0+
 
 Files: po/sv.po
