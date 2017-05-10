@@ -1,8 +1,12 @@
-gnome-twitch (0.4.0-1) UNRELEASED; urgency=medium
+gnome-twitch (0.4.1-1) unstable; urgency=medium
 
-  * New upstream release (0.4.0)
+  * New upstream release (0.3.1)
+  * Increase required meson version to 0.37.0
+  * Update copyright information in d/copyright
+  * Set locale to C.UTF-8 in d/rules because
+    unicode support is needed
 
- -- Tim Dengel <tim.dengel.debian@gmail.com>  Sat, 01 Apr 2017 19:23:22 +0200
+ -- Tim Dengel <tim.dengel.debian@gmail.com>  Wed, 10 May 2017 21:57:40 +0200
 
 gnome-twitch (0.3.1-1) unstable; urgency=medium
 
