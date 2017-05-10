@@ -440,7 +440,13 @@ chat_view_button_press_cb(GtkWidget* widget,
         g_assert(GT_IS_WIN(win));
 
         if (!utils_str_empty(url))
-            gtk_show_uri_on_window(GTK_WINDOW(win), url, GDK_CURRENT_TIME, NULL); /* FIXME: Handle error here */
+        {
+#if GTK_CHECK_VERSION(3, 22, 0)
+            gtk_show_uri_on_window(GTK_WINDOW(win), url, GDK_CURRENT_TIME, NULL);
+#else
+            gtk_show_uri(NULL, url, GDK_CURRENT_TIME, NULL);
+#endif
+        }
     }
 
     g_slist_free(tags);
@@ -619,7 +625,7 @@ after_connected_cb(GObject* source,
             gt_app_is_logged_in(main_app));
         gtk_entry_set_placeholder_text(GTK_ENTRY(priv->chat_entry),
             gt_app_is_logged_in(main_app)
-            ? _("Send a message") : _("Please login to chat"));
+            ? _("Send a message") : _("Please log in to chat"));
     }
 }
 

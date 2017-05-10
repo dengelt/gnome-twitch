@@ -2,9 +2,7 @@
 
 Enjoy Twitch on your GNU/Linux desktop.
 
-[![Gitter](https://badges.gitter.im/vinszent/gnome-twitch.svg)](https://gitter.im/gnome-twitch/Lobby?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge) (free tech support and development help ![datsheffy](https://static-cdn.jtvnw.net/emoticons/v1/170/1.0))
-
-## [Latest news](http://gnome-twitch.vinszent.com/posts/gnome-twitch-v0.3.0-post.html)
+<!-- ## [Latest news](http://gnome-twitch.vinszent.com/posts/gnome-twitch-v0.3.0-post.html) -->
 
 ## Install
 ### Dependencies
@@ -38,21 +36,25 @@ meson build
 sudo ninja -C build install
 ```
 
-### Install extra player backends
+### Install player backends
 #### Root install
-
 ``` shell
 meson build \
     -Dbuild-executable=false \
     -Dbuild-player-backends=${PLAYER_BACKENDS_YOU_WANT}
 sudo ninja -C build install
 ```
+
+**Note:** `${PLAYER_BACKENDS_YOU_WANT}` should be replaced with a
+comma separated list of
+`gstreamer-opengl,gstreamer-cairo,gstreamer-clutter,mpv-opengl`, for
+example `-Dbuild-player-backends=gstreamer-cairo,mpv-opengl`
+
 #### Local install
-
-Same as the root install but instead change the last two lines to:
-
 ``` shell
-meson build --prefix=$HOME/.local --libdir=share
+meson build --prefix=$HOME/.local --libdir=share \
+    -Dbuild-executable=false \
+    -Dbuild-player-backends=${PLAYER_BACKENDS_YOU_WANT}
 ninja -C build install
 ```
 
@@ -65,6 +67,7 @@ ninja -C build install
 * [Ubuntu (courtesy of GetDeb.net)](http://www.getdeb.net/app/GNOME%20Twitch) (You will need to install the ubuntu-restricted-extras for the h264 decoder)
 * [Ubuntu (courtesy of WebUpd8.org)](https://launchpad.net/%7Enilarimogard/+archive/ubuntu/webupd8/+index?batch=75&direction=backwards&memo=150&start=75) (Same requirements as above)
 * [Gentoo (courtesy of @TorArneThune)](https://github.com/TorArneThune/gnome-twitch-ebuild)
+* [Solus](https://packages.solus-project.com/shannon/g/gnome-twitch/)
 
 To install extra backends, please refer to either instructions above or checkout the [wiki page](https://github.com/vinszent/gnome-twitch/wiki/How-to-install-player-backends)
 for details on which packages to install for the common distros.

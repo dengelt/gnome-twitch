@@ -2458,7 +2458,7 @@ gt_twitch_emoticons(GtTwitch* self,
     g_autoptr(SoupMessage) msg = NULL;
     g_autoptr(JsonReader) reader = NULL;
     g_autofree gchar* uri = NULL;
-    g_auto(GStrv) sets;
+    g_auto(GStrv) sets = NULL;
     GList* ret = NULL;
     GError* err = NULL;
 
@@ -2570,7 +2570,7 @@ gt_twitch_fetch_user_info(GtTwitch* self,
 
     reader = new_send_message_json(self, msg, &err);
 
-    CHECK_AND_PROPAGATE_ERROR("Unable to get user info");
+    CHECK_AND_PROPAGATE_ERROR("Unable to fetch user info");
 
     ret = gt_user_info_new();
 
@@ -2674,7 +2674,7 @@ gt_twitch_fetch_oauth_info(GtTwitch* self,
 
     reader = new_send_message_json(self, msg, &err);
 
-    CHECK_AND_PROPAGATE_ERROR("Unable to get oauth info");
+    CHECK_AND_PROPAGATE_ERROR("Unable to fetch oauth info");
 
     ret = gt_oauth_info_new();
 

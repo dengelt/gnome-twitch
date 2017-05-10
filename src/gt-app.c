@@ -268,28 +268,13 @@ open_channel_after_fetch_cb(GObject* source,
     }
     else if (!gt_channel_is_online(channel))
     {
-        gt_win_show_info_message(win, _("Unable to open channel %s bceause it's not online"),
+        gt_win_show_info_message(win, _("Unable to open channel %s because it's not online"),
             gt_channel_get_name(channel));
     }
     else
         gt_win_open_channel(win, channel); //NOTE: Win will take a reference to channel
 
     g_object_unref(self);
-}
-
-static void
-open_channel_from_url_cb(GSimpleAction* action,
-    GVariant* var, gpointer udata)
-{
-    g_assert(G_IS_SIMPLE_ACTION(action));
-    g_assert(GT_IS_APP(udata));
-    g_assert(g_variant_is_of_type(var, G_VARIANT_TYPE_STRING));
-
-    GtWin* win;
-
-    win = GT_WIN_ACTIVE;
-
-    g_assert(GT_IS_WIN(win));
 }
 
 static void
