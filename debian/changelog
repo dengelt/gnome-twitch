@@ -1,6 +1,6 @@
 gnome-twitch (0.4.1-1) experimental; urgency=medium
 
-  * New upstream release (0.3.1)
+  * New upstream release (0.4.1)
   * Increase required meson version to 0.37.0
   * Update copyright information in d/copyright
   * Set locale to C.UTF-8 in d/rules because
