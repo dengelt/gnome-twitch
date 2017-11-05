@@ -1,3 +1,11 @@
+gnome-twitch (0.4.1-2) unstable; urgency=medium
+
+  * Set priority to optional because extra has been deprecated
+  * Bump standards version from 3.9.8 to 4.1.1
+  * Fix typo in meson build file (Closes: 880842)
+
+ -- Tim Dengel <tim.dengel.debian@gmail.com>  Sun, 05 Nov 2017 19:23:48 +0100
+
 gnome-twitch (0.4.1-1) experimental; urgency=medium
 
   * New upstream release (0.4.1)
