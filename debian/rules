@@ -8,7 +8,7 @@ export DEB_LDFLAGS_MAINT_APPEND = -Wl,--as-needed
 export LC_ALL=C.UTF-8
 
 %:
-	dh $@ 
+	dh $@
 
 override_dh_auto_configure:
 	mkdir build && meson --buildtype plain --prefix /usr \
