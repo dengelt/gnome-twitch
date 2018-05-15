@@ -14,7 +14,7 @@ Depends: ${shlibs:Depends}, ${misc:Depends}
 Recommends: gnome-twitch-player-backend-gstreamer-cairo (= ${binary:Version}) | gnome-twitch-player-backend-gstreamer-opengl (= ${binary:Version}) | gnome-twitch-player-backend-gstreamer-clutter (= ${binary:Version}) | gnome-twitch-player-backend-mpv-opengl (= ${binary:Version})
 Description: GNOME Twitch app for watching Twitch.tv streams without a browser or flash
  gnome-twitch provides a GTK3 interface for viewing streams on Twitch.
- At the moment you can 
+ At the moment you can
   * browse popular streams,
   * browse streams by game,
   * search for streams,
@@ -23,8 +23,8 @@ Description: GNOME Twitch app for watching Twitch.tv streams without a browser o
   * change the video quality,
   * follow streams on your Twitch account and
   * switch between player backends.
- More features like recording streams, VODs (Video-On-Demand), 
- integration of Twitch account features 
+ More features like recording streams, VODs (Video-On-Demand),
+ integration of Twitch account features
  like following streams are planned.
 
 Package: gnome-twitch-player-backend-gstreamer-cairo
@@ -32,7 +32,7 @@ Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, gstreamer1.0-libav, gstreamer1.0-plugins-base, gstreamer1.0-plugins-good, gstreamer1.0-plugins-bad, gnome-twitch (= ${binary:Version})
 Description: Player backend for GNOME Twitch based on gstreamer+cairo
  Player backends are responsible for playing the actual video streams.
- Different player backends use different libraries to do this. 
+ Different player backends use different libraries to do this.
  This player backend uses GStreamer and cairo.
 
 Package: gnome-twitch-player-backend-gstreamer-opengl
