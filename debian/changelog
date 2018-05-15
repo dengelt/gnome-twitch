@@ -3,6 +3,7 @@ gnome-twitch (0.4.1-3) unstable; urgency=medium
   * Use https to talk to Twitch servers, because
     Twitch deprecated some http APIs (Closes: 898768)
   * Bump standards version from 4.1.1 to 4.1.4.1
+  * Bump debhelper compat version to 11
 
  -- Tim Dengel <tim.dengel.debian@gmail.com>  Tue, 15 May 2018 21:30:42 +0200
 
