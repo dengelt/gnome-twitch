@@ -2,7 +2,7 @@ Source: gnome-twitch
 Section: video
 Priority: optional
 Maintainer: Tim Dengel <tim.dengel.debian@gmail.com>
-Build-Depends: debhelper (>= 12~), meson (>= 0.37.0), libgtk-3-dev (>= 3.20), libpeas-dev, libsoup2.4-dev, libjson-glib-dev, libgstreamer1.0-dev, libclutter-gst-3.0-dev, libclutter-gtk-1.0-dev, libwebkit2gtk-4.0-dev, libmpv-dev
+Build-Depends: debhelper-compat (= 12), meson (>= 0.37.0), libgtk-3-dev (>= 3.20), libpeas-dev, libsoup2.4-dev, libjson-glib-dev, libgstreamer1.0-dev, libclutter-gst-3.0-dev, libclutter-gtk-1.0-dev, libwebkit2gtk-4.0-dev, libmpv-dev
 Standards-Version: 4.1.4.1
 Homepage: https://github.com/vinszent/gnome-twitch
 Vcs-Git: https://github.com/dengelt/gnome-twitch.git -b debian/sid

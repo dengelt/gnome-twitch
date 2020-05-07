@@ -1,6 +1,7 @@
 gnome-twitch (0.4.1-4) UNRELEASED; urgency=medium
 
   * Bump debhelper from old 11 to 12.
+  * Set debhelper-compat version in Build-Depends.
 
  -- Debian Janitor <janitor@jelmer.uk>  Thu, 07 May 2020 00:14:53 +0000
 
